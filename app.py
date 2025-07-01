@@ -1,16 +1,20 @@
 import streamlit as st
-import openai
+from openai import OpenAI # Updated import
 from PIL import Image
 import base64
 import io
 
 # OpenAI API 키 설정 (Streamlit Secrets에서 가져옴)
-openai.api_key = st.secrets["openai"]["api_key"]
+# Set OpenAI API key (retrieved from Streamlit Secrets)
+# Initialize the OpenAI client
+client = OpenAI(api_key=st.secrets["openai"]["api_key"])
+
 
 st.set_page_config(page_title="Pika 영상 제작 GPT 도우미")
 st.title("🎬 Pika 영상 제작 GPT 도우미")
 
 # 사이드바에서 작업 선택
+# Select task from sidebar
 chat_option = st.sidebar.radio("작업을 선택하세요:", [
     "1. 이야기 점검하기",
     "2. 이야기 나누기",
@@ -19,25 +23,31 @@ chat_option = st.sidebar.radio("작업을 선택하세요:", [
 ])
 
 # 공통 GPT 호출 함수
+# Common GPT call function
 def ask_gpt(messages, model="gpt-4o"):
-    response = openai.ChatCompletion.create(
+    # Updated API call using the new client syntax
+    response = client.chat.completions.create(
         model=model,
         messages=messages
     )
     return response.choices[0].message.content
 
 # 이미지 생성 함수 (DALL·E 사용)
+# Image generation function (using DALL·E)
 def generate_image(prompt):
-    response = openai.Image.create(
+    # Updated API call using the new client syntax
+    response = client.images.generate(
         model="dall-e-3",
         prompt=prompt,
         size="1024x1024",
         response_format="b64_json"
     )
-    image_data = base64.b64decode(response["data"][0]["b64_json"])
+    # The response structure changed in v1.0.0
+    image_data = base64.b64decode(response.data[0].b64_json)
     return Image.open(io.BytesIO(image_data))
 
 # 1. 이야기 점검하기
+# 1. Story Review
 if chat_option.startswith("1"):
     st.header("1. 이야기 점검하기")
     st.markdown("💬 **목표:** 여러분의 이야기가 영상으로 만들기에 적절한지 GPT와 함께 점검하고 다듬어 보세요.")
@@ -58,6 +68,7 @@ if chat_option.startswith("1"):
             st.write(ask_gpt(messages))
 
 # 2. 이야기 나누기
+# 2. Story Segmentation
 elif chat_option.startswith("2"):
     st.header("2. 이야기 나누기 (장면 분할)")
     st.markdown("✂️ **목표:** 긴 이야기를 10초 내외의 짧은 영상 장면으로 나누고, 각 장면의 핵심 요소를 명확히 해보세요.")
@@ -68,6 +79,7 @@ elif chat_option.startswith("2"):
         st.session_state.scene_count = 1
 
     # 장면 입력 필드
+    # Scene input fields
     for i in range(1, st.session_state.scene_count + 1):
         st.session_state.scenes[f"part_{i}"] = st.text_area(
             f"장면 {i} 입력",
@@ -88,10 +100,12 @@ elif chat_option.startswith("2"):
             with st.spinner(f"GPT가 장면 {i}를 점검 중입니다..."):
                 st.write(ask_gpt(messages))
         st.markdown("---") # 각 장면 구분을 위한 시각적 구분자
+                             # Visual separator for each scene
 
     col1, col2 = st.columns(2)
     with col1:
         if st.session_state.scene_count < 9: # 최대 9개 장면 제한
+                                             # Maximum 9 scenes limit
             if st.button("새 장면 추가"):
                 st.session_state.scene_count += 1
                 st.experimental_rerun()
@@ -104,6 +118,7 @@ elif chat_option.startswith("2"):
             ])
 
             if all_scenes_content.strip(): # 공백만 있는 경우를 방지
+                                          # Prevent case where only whitespace exists
                 final_feedback_messages = [
                     {"role": "system", "content": (
                         "너는 초등학생이 나눈 이야기 장면들의 전체적인 흐름을 검토하고 최종적인 피드백을 제공하는 GPT 도우미야.\n"
@@ -120,6 +135,7 @@ elif chat_option.startswith("2"):
                 st.warning("먼저 하나 이상의 장면을 입력해주세요.")
 
 # 3. 이미지 생성
+# 3. Image Generation
 elif chat_option.startswith("3"):
     st.header("3. 캐릭터/배경 이미지 프롬프트 구성 및 생성")
     st.markdown("🎨 **목표:** Pika 영상에 사용할 캐릭터나 배경의 대표 이미지를 만들 프롬프트를 GPT와 함께 구체화하고 직접 이미지를 생성해 보세요.")
@@ -150,6 +166,7 @@ elif chat_option.startswith("3"):
         if "완성된 이미지 프롬프트는 다음과 같아요:" in gpt_response:
             prompt_line = gpt_response.split("완성된 이미지 프롬프트는 다음과 같아요:")[-1].strip()
             # 프롬프트 앞뒤의 따옴표나 공백 제거
+            # Remove quotes or spaces from the beginning/end of the prompt
             prompt = prompt_line.strip("'").strip("\"")
             st.session_state.current_prompt = prompt
             with st.spinner("이미지를 생성 중입니다..."):
@@ -157,6 +174,7 @@ elif chat_option.startswith("3"):
             st.session_state.image_history = [(prompt, image)]
 
     # 이미지 피드백 루프
+    # Image feedback loop
     if st.session_state.image_history:
         prompt, image = st.session_state.image_history[-1]
         st.image(image, caption="생성된 이미지", use_column_width=True)
@@ -177,19 +195,23 @@ elif chat_option.startswith("3"):
             revise = st.text_input("어떤 부분을 수정하고 싶나요? (예: 모자 색깔을 빨간색으로, 표정을 더 밝게)", key="img_revise")
             if st.button("수정된 이미지 생성") and revise:
                 # Pika 특성을 고려하여, 수정 사항을 기존 프롬프트에 단순하게 추가
+                # Considering Pika's characteristics, simply add revisions to the existing prompt
                 revised_prompt = f"{st.session_state.current_prompt}, 단 {revise}"
                 with st.spinner("수정된 이미지 생성 중입니다..."):
                     revised_image = generate_image(revised_prompt)
                     st.session_state.image_history.append((revised_prompt, revised_image))
                     st.experimental_rerun() # 수정된 이미지 바로 표시
+                                            # Display revised image immediately
         elif feedback == "네, 다음 그림으로 넘어가기":
             st.success("다음 캐릭터 또는 배경 입력 단계로 넘어갈 준비가 되었습니다.")
             # 다음 이미지 생성을 위해 상태 초기화 (선택 사항, 필요에 따라 유지 가능)
+            # Reset state for next image generation (optional, can be maintained if needed)
             # st.session_state.image_history = []
             # st.session_state.current_prompt = ""
 
 
 # 4. 장면별 영상 프롬프트 점검
+# 4. Scene-by-Scene Video Prompt Review
 elif chat_option.startswith("4"):
     st.header("4. 장면별 영상 프롬프트 점검")
     st.markdown("🎥 **목표:** 각 장면을 Pika 영상으로 만들기 위한 프롬프트를 GPT와 함께 최종 점검하고 간결하게 완성해 보세요.")
