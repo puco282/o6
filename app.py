@@ -1,4 +1,3 @@
-<PUT YOUR FINAL STREAMLIT CODE HERE>
 import streamlit as st
 import openai
 from PIL import Image
