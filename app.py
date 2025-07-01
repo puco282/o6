@@ -19,7 +19,7 @@ chat_option = st.sidebar.radio("작업을 선택하세요:", [
     "1. 이야기 점검하기",
     "2. 이야기 나누기",
     "3. 캐릭터/배경 이미지 생성",
-    "4. 장면별 영상 프롬프트 점검"
+    "4. 장면별 영상 프rompt 점검"
 ])
 
 # 공통 GPT 호출 함수
@@ -81,7 +81,7 @@ if chat_option.startswith("1"):
             with st.spinner("GPT가 이야기를 점검 중입니다..."):
                 gpt_response = ask_gpt(st.session_state.messages_story_review)
                 st.session_state.messages_story_review.append({"role": "assistant", "content": gpt_response})
-            st.experimental_rerun() # Rerun to display GPT's first message
+            st.rerun() # Changed from st.experimental_rerun() to st.rerun()
 
     # Chat input for ongoing conversation
     if st.session_state.story_input_submitted:
@@ -90,7 +90,7 @@ if chat_option.startswith("1"):
             with st.spinner("GPT가 답변을 생성 중입니다..."):
                 gpt_response = ask_gpt(st.session_state.messages_story_review)
                 st.session_state.messages_story_review.append({"role": "assistant", "content": gpt_response})
-            st.experimental_rerun() # Rerun to display new messages
+            st.rerun() # Changed from st.experimental_rerun() to st.rerun()
 
     # Optional: A button to reset the conversation
     if st.session_state.story_input_submitted and st.button("대화 초기화", key="reset_story_review_chat"):
@@ -104,4 +104,4 @@ if chat_option.startswith("1"):
             )}
         ]
         st.session_state.story_input_submitted = False
-        st.experimental_rerun()
+        st.rerun() # Changed from st.experimental_rerun() to st.rerun()
