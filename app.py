@@ -1,12 +1,10 @@
 import streamlit as st
-from openai import OpenAI # Updated import
+from openai import OpenAI
 from PIL import Image
 import base64
 import io
 
 # OpenAI API 키 설정 (Streamlit Secrets에서 가져옴)
-# Set OpenAI API key (retrieved from Streamlit Secrets)
-# Initialize the OpenAI client
 client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 
 
@@ -14,18 +12,15 @@ st.set_page_config(page_title="Pika 영상 제작 GPT 도우미")
 st.title("🎬 Pika 영상 제작 GPT 도우미")
 
 # 사이드바에서 작업 선택
-# Select task from sidebar
 chat_option = st.sidebar.radio("작업을 선택하세요:", [
     "1. 이야기 점검하기",
     "2. 이야기 나누기",
     "3. 캐릭터/배경 이미지 생성",
-    "4. 장면별 영상 프rompt 점검"
+    "4. 장면별 영상 Prompt 점검"
 ])
 
 # 공통 GPT 호출 함수
-# Common GPT call function
 def ask_gpt(messages, model="gpt-4o"):
-    # Updated API call using the new client syntax
     response = client.chat.completions.create(
         model=model,
         messages=messages
@@ -33,219 +28,461 @@ def ask_gpt(messages, model="gpt-4o"):
     return response.choices[0].message.content
 
 # 이미지 생성 함수 (DALL·E 사용)
-# Image generation function (using DALL·E)
 def generate_image(prompt):
-    # Updated API call using the new client syntax
     response = client.images.generate(
         model="dall-e-3",
         prompt=prompt,
         size="1024x1024",
         response_format="b64_json"
     )
-    # The response structure changed in v1.0.0
     image_data = base64.b64decode(response.data[0].b64_json)
     return Image.open(io.BytesIO(image_data))
 
 # 모든 GPT 시스템 프롬프트에 공통으로 들어갈 지침
-# Global directives for all GPT system prompts
 GLOBAL_GPT_DIRECTIVES = (
     "**[공통 지침]**\n"
-    "- 이 프로그램의 최종 목표는 Pika를 활용하여 1분에서 1분 30초 정도의 영상을 창작하는 것이야.\n"
-    "- 학생의 창의성을 존중하고, 칭찬과 격려의 말투를 꼭 유지해줘.\n"
+    [cite_start]"- 이 프로그램의 최종 목표는 Pika를 활용하여 1분에서 1분 30초 정도의 영상을 창작하는 것이야. [cite: 4]\n"
+    [cite_start]"- GPT는 창작물을 대신 완성하지 않고, 질문을 통해 학생 스스로 수정과 구체화를 유도하는 조력자 역할을 수행해. [cite: 5] 학생의 창의성을 존중하고, 칭찬과 격려의 말투를 꼭 유지해줘.\n"
     "- **콘텐츠 제한:** 폭력적이거나, 특정인을 등장시키거나, 선정적인 내용은 절대 금지해.\n"
     "----------------------------------------------------------------------------------------------------\n"
 )
 
-# 1. 이야기 점검하기
-# 1. Story Review
+# 1. 이야기 점검하기 (기존 코드 그대로 유지)
 if chat_option.startswith("1"):
     st.header("1. 이야기 점검하기")
-    st.markdown("💬 **목표:** 여러분의 이야기를 입력하면 GPT가 영상 제작을 위한 점검 피드백을 제공합니다.")
-    story = st.text_area("여러분이 창작한 이야기를 입력하세요.")
-    if st.button("GPT에게 점검받기") and story:
-        messages = [
+    st.markdown("💬 **목표:** 여러분의 이야기가 영상으로 만들기에 적절한지 GPT와 함께 대화하며 점검하고 다듬어 보세요.")
+
+    if "messages_story_review" not in st.session_state:
+        st.session_state.messages_story_review = [
             {"role": "system", "content": (
                 GLOBAL_GPT_DIRECTIVES +
-                "너는 초등학생이 창작한 이야기를 보고, Pika 영상으로 만들 수 있도록 점검해주는 GPT 도우미야.\n"
-                "먼저 학생의 이야기를 읽고, 어떤 인물에 대한 이야기인지, 배경은 구체적인지, 사건은 개연성이 있는지 등 이야기의 요소를 중심으로 점검해.\n"
-                "작은 부분부터 큰부분으로 앞에서 부터 뒤쪽으로 진행하며 질문해.\n"
-                "이야기의 주제는 무엇인지, 더 창의적인 아이디어를 추가할 수 있을지, 서술과 묘사가 전체 이야기를 이애하는데 도움이 되는지도 확인해서 질문해.\n"
-                "이미 잘 표현되어 있으면 질문하지 마. 이해되지 않는 부분이 있다면 질문을 통해 명확화하도록 유도해.\n"
-                "여기까지는 소크라테스식 질문으로 학생 스스로 표현을 다듬도록 도와줘.\n"
-                "6가지 핵심요소: 인물, 사건, 배경, 주제, 묘사, 창의성의 각 질문은 1개에서 최대 2개로해,\n"
-                "이야기의 길이(1~1분 30초)에 적합한 내용인지 점검하고 피드백 해, 모든 질문이 끝나면 다음단계로 넘어가,\n"
-                "구조(발단-전개-절정-결말)에 해당하는 부분을 확인하고 인과관계나 연결 등 부족한 부분이 있으면 피드백 해,\n"
-                "문법적으로 어색한 문장, 그리고 문맥에 맞지 않는 문장, 내용이 이해되지 않는 문장을 찾아서 어떤 부분에서 고쳐야하는지 피드백 해,\n"
-                "마지막에는 보완 수정해야할 내용을 구체적이고 초등학생이 알아듣기 쉽게 격려하는 말투로 안내해줘."
-            )},
-            {"role": "user", "content": story}
+                "너는 초등학생이 창작한 이야기를 Pika 영상으로 만들 수 있도록 돕는 소크라테스식 대화형 GPT 도우미야.\n"
+                "학생의 이야기를 읽고, 이해되지 않거나 구체화가 필요한 부분이 있다면 **반드시 한 번에 하나의 질문만**을 통해 학생 스스로 생각하고 답하도록 유도해.\n"
+                "**절대 여러 질문을 동시에 하거나, 복합적인 질문을 만들지 마.** 학생의 답변을 기다린 후 다음 질문을 이어가야 해.\n"
+                "**절대 대화 초반에 요약이나 평가를 먼저 제공하지 마.** 오직 질문을 통해서만 학생의 이야기를 이끌어내야 해.\n"
+                "\n"
+                "질문은 다음 순서와 원칙에 따라 진행해야 해:\n"
+                "1.  **이야기 요소 구체화 (전체적인 것부터 세부적인 것으로):**\n"
+                "    - '주인공은 어떤 아이인가요? 이름이나 특별한 점이 있나요?'\n"
+                "    - '이야기의 배경은 어떤 곳인가요? 어떤 분위기인가요?'\
+                "    - '이야기에서 가장 먼저 일어나는 중요한 사건은 무엇인가요?'\n"
+                "    - '주인공 외에 또 어떤 인물이 등장하나요? 그 인물은 주인공과 어떤 관계인가요?'\n"
+                "2.  **사건의 인과관계 및 흐름 확인:**\n"
+                "    - '이 사건이 왜 일어났나요? 무엇 때문에 이런 일이 벌어졌나요?'\n"
+                "    - '앞선 사건과 지금 사건은 어떻게 연결되나요? 사건들이 논리적으로 이어지나요?'\n"
+                "    - '이야기의 흐름이 자연스럽게 느껴지나요? 혹시 갑자기 이야기가 바뀌는 부분은 없나요?'\n"
+                "3.  **인물의 감정 및 생각:**\n"
+                "    - '이 상황에서 주인공은 어떤 기분이었을까요? 어떤 생각을 했을까요?'\n"
+                "    - '주인공의 감정이나 생각이 이야기 전개에 어떤 영향을 주었나요?'\n"
+                "4.  **이야기 구조(발단-전개-절정-결말) 점검 (질문을 통해 유도):**\n"
+                "    - '이야기가 어떻게 시작되었나요? 발단 부분에서 무엇을 보여주고 싶었나요?'\n"
+                "    - '주요 사건들이 어떻게 전개되나요? 갈등은 어떻게 발전하나요?'\n"
+                "    - '이 이야기에서 가장 중요한 순간, 즉 절정은 언제인가요? 왜 그 순간이 가장 흥미롭거나 결정적인가요? 주인공에게 어떤 큰 변화가 있었나요?'\n"
+                "    - '이야기는 어떻게 마무리되나요? 결말 부분에서 주인공에게 어떤 변화가 있었나요?'\n"
+                "5.  **어색하거나 불분명한 문장/표현 (질문을 통해 유도):**\n"
+                "    - 만약 특정 문장이나 표현이 어색하거나 문맥에 맞지 않는다고 판단되면, **해당 문장을 직접 고쳐주기보다는 간단한 예시를 들어 학생이 스스로 수정할 수 있도록 조언**해줘. 이 조언 또한 단일 질문과 함께 제공될 수 있어.\n"
+                "\n"
+                "학생의 답변을 바탕으로 다음 질문을 이어나가고, 이야기가 충분히 구체화되었다고 판단되면 **최종적으로 다음과 같은 구체적이고 세세하며 학생들이 이해하기 쉬운 조언과 보완 방안을 제공해줘.**\n"
+                "\n"
+                "**[최종 이야기 평가 및 보완 제안]**\n"
+                "\n"
+                "**이야기 층위 - 내용**\n"
+                "1.  **주제:** '주제가 잘 드러나는가' - [구체적 설명]. 예를 들어, '이야기의 핵심 메시지가 [현재 메시지]로 느껴지는데, [개선 방향]을 더 강조하면 주제가 더 명확해질 거예요.'\n"
+                "2.  **창작 아이디어:** '아이디어가 창의적인가' - [구체적 설명]. 예를 들어, '냉장고 속 얼음 궁전이라는 아이디어는 정말 창의적이에요! 이 독특한 설정을 [구체적 예시]처럼 더 활용하면 이야기가 더욱 특별해질 거예요.'\n"
+                "\n"
+                "**이야기 층위 - 조직 구성**\n"
+                "3.  **인물:** '누구에 대한 이야기인지 분명한가' - [구체적 설명]. 예를 들어, '엘사의 감정 변화가 잘 드러나 있지만, [특정 상황]에서 엘사가 어떤 생각을 했는지 더 자세히 보여주면 인물이 더욱 생생해질 거예요.'\n"
+                "4.  **사건:** '개연성 있는 사건인가' - [구체적 설명]. 예를 들어, '사건들이 흥미롭게 이어지지만, [특정 사건]이 [이전 사건]과 왜 연결되는지 조금 더 설명하면 이야기가 더 자연스러울 거예요.'\n"
+                "5.  **배경:** '배경은 상황을 잘 살려 내고 있는가' - [구체적 설명]. 예를 들어, '전쟁 중인 거리와 얼음 궁전의 대비가 좋았어요. 얼음 궁전이 엘사에게 왜 특별한 피난처였는지 [구체적 예시]처럼 더 자세히 묘사하면 배경이 더욱 중요하게 느껴질 거예요.'\n"
+                "6.  **이야기 구조(발단-전개-절정-결말):** '이야기가 발단-전개-절정-결말의 구조를 잘 따르고 있는지' - [구체적 설명]. 각 단계는 다음과 같아요: 발단 - [내용 요약], 전개 - [내용 요약], 절정 - [내용 요약], 결말 - [내용 요약]. 만약 구조가 약하다면, '이야기 구조에서 [특정 부분] (예: 절정)이 조금 약하게 느껴져요. [문제점]이 있어서 [개선점]이 필요해요. 예를 들어, [구체적 예시]처럼 수정하면 더 좋을 거예요.'\n"
+                "\n"
+                "**표현 층위 - 표현**\n"
+                "7.  **문체(문장):** '어색하거나 불분명한 문장/표현이 있는가' - [구체적 설명]. 예를 들어, '몇몇 문장(예: \'...\')이 조금 어색하거나 문맥에 맞지 않아 내용 이해가 어려울 수 있어요. 이 부분을 \'...\'처럼 바꾸면 더 명확하고 생생하게 전달될 거예요.'\n"
+                "8.  **대화:** '대화가 인물의 성격을 잘 드러내고 있는가' - [구체적 설명]. 예를 들어, '현재 대화가 많지 않지만, [특정 상황]에서 인물들이 어떤 대화를 나누면 좋을지 [구체적 예시]처럼 추가해보면 인물의 성격이 더 잘 드러날 거예요.'\n"
+                "9.  **지문(서술과 묘사):** '서술과 묘사는 적절하게 활용되었는가' - [구체적 설명]. 예를 들어, '냉장고 속 얼음 궁전의 묘사는 좋았어요. [다른 부분]에서도 [구체적 예시]처럼 서술과 묘사를 활용하면 이야기가 더욱 풍성해질 거예요.'\n"
+                "\n"
+                "**종합적인 보완 방향 및 Pika 영상 제작 조언:**\n"
+                "위 평가를 종합하여 이야기 전체의 보완 방향을 구체적이고 세세하게 설명해줘. 특히, '이 부분을 보충하면 이야기가 더 풍성해지고 재미있어질 거예요.', '이 내용이 이해가 잘 안 될 수 있으니 이렇게 바꿔보면 어떨까요?'와 같이 학생들이 이해하기 쉽게 설명해줘. Pika 영상으로 만들 때 어떤 점을 더 강조하거나, 어떤 부분을 간결하게 표현하면 좋을지 등 실질적인 조언을 포함해줘.\n"
+                "\n"
+                "항상 학생의 창의성을 존중하고 칭찬과 격려의 말투를 꼭 유지해줘."
+            )}
         ]
-        with st.spinner("GPT가 이야기를 점검 중입니다..."):
-            st.write(ask_gpt(messages))
+        st.session_state.story_input_submitted = False # Flag to check if initial story is submitted
 
-# 2. 이야기 나누기
-# 2. Story Segmentation
+    # Display chat messages from history
+    for message in st.session_state.messages_story_review:
+        if message["role"] != "system": # Don't display system messages directly
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+    # Initial story input
+    if not st.session_state.story_input_submitted:
+        story = st.text_area("여러분이 창작한 이야기를 입력하세요.", key="initial_story_input")
+        if st.button("이야기 점검 시작") and story:
+            st.session_state.messages_story_review.append({"role": "user", "content": story})
+            st.session_state.story_input_submitted = True
+            # Get initial GPT response
+            with st.spinner("GPT가 이야기를 점검 중입니다..."):
+                gpt_response = ask_gpt(st.session_state.messages_story_review)
+                st.session_state.messages_story_review.append({"role": "assistant", "content": gpt_response})
+            st.rerun()
+
+    # Chat input for ongoing conversation
+    if st.session_state.story_input_submitted:
+        if prompt := st.chat_input("GPT에게 답변하거나 추가 질문을 해보세요."):
+            st.session_state.messages_story_review.append({"role": "user", "content": prompt})
+            with st.spinner("GPT가 답변을 생성 중입니다..."):
+                gpt_response = ask_gpt(st.session_state.messages_story_review)
+                st.session_state.messages_story_review.append({"role": "assistant", "content": gpt_response})
+            st.rerun()
+
+    # Optional: A button to reset the conversation
+    if st.session_state.story_input_submitted and st.button("대화 초기화", key="reset_story_review_chat"):
+        st.session_state.messages_story_review = [
+            {"role": "system", "content": (
+                GLOBAL_GPT_DIRECTIVES +
+                "너는 초등학생이 창작한 이야기를 Pika 영상으로 만들 수 있도록 돕는 소크라테스식 대화형 GPT 도우미야.\n"
+                "학생의 이야기를 읽고, 이해되지 않거나 구체화가 필요한 부분이 있다면 **반드시 한 번에 하나의 질문만**을 통해 학생 스스로 생각하고 답하도록 유도해.\n"
+                "**절대 여러 질문을 동시에 하거나, 복합적인 질문을 만들지 마.** 학생의 답변을 기다린 후 다음 질문을 이어가야 해.\n"
+                "**절대 대화 초반에 요약이나 평가를 먼저 제공하지 마.** 오직 질문을 통해서만 학생의 이야기를 이끌어내야 해.\n"
+                "\n"
+                "질문은 다음 순서와 원칙에 따라 진행해야 해:\n"
+                "1.  **이야기 요소 구체화 (전체적인 것부터 세부적인 것으로):**\n"
+                "    - 주인공은 어떤 아이인지, 이야기의 배경은 어떤 곳인지, 어떤 주요 사건들이 발생하는지, 주인공 이외에 어떤 인물이 더 등장하는지 등 이야기의 핵심 요소와 관련된 질문.\n"
+                "2.  **사건의 인과관계 및 흐름 확인:**\n"
+                "    - 이야기 속 사건들이 왜 발생했는지, 사건 간의 연결이 논리적인지를 파악해.\n"
+                "    - 원인이 불분명하거나 연결이 어색하면, 간단한 예시와 함께 다시 생각할 수 있도록 조언해줘.\n"
+                "3.  **인물의 감정 및 생각:**\n"
+                "    - 이 상황에서 인물이 느끼는 기분이나 생각은 무엇인지 등 (이야기의 명확성과 흐름을 돕는 맥락에서 사용).\n"
+                "4.  **이야기 구조(발단-전개-절정-결말) 점검:**\n"
+                "    - 이야기가 발단, 전개, 절정, 결말의 흐름에 맞게 구성되어 있는지 확인해.\n"
+                "    - 각 단계에 해당하는 내용을 간단히 요약해주고, 빠지거나 흐름이 약한 단계가 있다면 구체적이고 이해하기 쉬운 수정 방향을 제시해줘.\n"
+                "\n"
+                "5.  **문장 표현 점검:**\n"
+                "    - 이야기에서 어색한 문장이나 표현, 문맥에 맞지 않는 부분이 있다면 명확히 지적해줘.\n"
+                "    - 직접 고쳐주기보다는 간단한 수정 예시를 들어 학생이 스스로 수정할 수 있도록 도와줘.\n"
+                "\n"
+                "학생의 답변을 바탕으로 다음 질문을 이어나가고, 이야기가 충분히 구체화되었다고 판단되면 **최종적으로 다음과 같은 구체적이고 세세하며 학생들이 이해하기 쉬운 조언과 보완 방안을 제공해줘.**\n"
+                "\n"
+                "**[최종 이야기 평가 및 보완 제안]**\n"
+                "\n"
+                "**이야기 층위 - 내용**\n"
+                "1.  **주제:** '주제가 잘 드러나는가' - [구체적 설명]. 예를 들어, '이야기의 핵심 메시지가 [현재 메시지]로 느껴지는데, [개선 방향]을 더 강조하면 주제가 더 명확해질 거예요.'\n"
+                "2.  **창작 아이디어:** '아이디어가 창의적인가' - [구체적 설명]. 예를 들어, '냉장고 속 얼음 궁전이라는 아이디어는 정말 창의적이에요! 이 독특한 설정을 [구체적 예시]처럼 더 활용하면 이야기가 더욱 특별해질 거예요.'\n"
+                "\n"
+                "**이야기 층위 - 조직 구성**\n"
+                "3.  **인물:** '누구에 대한 이야기인지 분명한가' - [구체적 설명]. 예를 들어, '엘사의 감정 변화가 잘 드러나 있지만, [특정 상황]에서 엘사가 어떤 생각을 했는지 더 자세히 보여주면 인물이 더욱 생생해질 거예요.'\n"
+                "4.  **사건:** '개연성 있는 사건인가' - [구체적 설명]. 예를 들어, '사건들이 흥미롭게 이어지지만, [특정 사건]이 [이전 사건]과 왜 연결되는지 조금 더 설명하면 이야기가 더 자연스러울 거예요.'\n"
+                "5.  **배경:** '배경은 상황을 잘 살려 내고 있는가' - [구체적 설명]. 예를 들어, '전쟁 중인 거리와 얼음 궁전의 대비가 좋았어요. 얼음 궁전이 엘사에게 왜 특별한 피난처였는지 [구체적 예시]처럼 더 자세히 묘사하면 배경이 더욱 중요하게 느껴질 거예요.'\n"
+                "6.  **이야기 구조(발단-전개-절정-결말):** '이야기가 발단-전개-절정-결말의 구조를 잘 따르고 있는지' - [구체적 설명]. 각 단계는 다음과 같아요: 발단 - [내용 요약], 전개 - [내용 요약], 절정 - [내용 요약], 결말 - [내용 요약]. 만약 구조가 약하다면, '이야기 구조에서 [특정 부분] (예: 절정)이 조금 약하게 느껴져요. [문제점]이 있어서 [개선점]이 필요해요. 예를 들어, [구체적 예시]처럼 수정하면 더 좋을 거예요.'\n"
+                "\n"
+                "**표현 층위 - 표현**\n"
+                "7.  **문체(문장):** '어색하거나 불분명한 문장/표현이 있는가' - [구체적 설명]. 예를 들어, '몇몇 문장(예: \'...\')이 조금 어색하거나 문맥에 맞지 않아 내용 이해가 어려울 수 있어요. 이 부분을 \'...\'처럼 바꾸면 더 명확하고 생생하게 전달될 거예요.'\n"
+                "8.  **대화:** '대화가 인물의 성격을 잘 드러내고 있는가' - [구체적 설명]. 예를 들어, '현재 대화가 많지 않지만, [특정 상황]에서 인물들이 어떤 대화를 나누면 좋을지 [구체적 예시]처럼 추가해보면 인물의 성격이 더 잘 드러날 거예요.'\n"
+                "9.  **지문(서술과 묘사):** '서술과 묘사는 적절하게 활용되었는가' - [구체적 설명]. 예를 들어, '냉장고 속 얼음 궁전의 묘사는 좋았어요. [다른 부분]에서도 [구체적 예시]처럼 서술과 묘사를 활용하면 이야기가 더욱 풍성해질 거예요.'\n"
+                "\n"
+                "**종합적인 보완 방향 및 Pika 영상 제작 조언:**\n"
+                "위 평가를 종합하여 이야기 전체의 보완 방향을 구체적이고 세세하게 설명해줘. 특히, '이 부분을 보충하면 이야기가 더 풍성해지고 재미있어질 거예요.', '이 내용이 이해가 잘 안 될 수 있으니 이렇게 바꿔보면 어떨까요?'와 같이 학생들이 이해하기 쉽게 설명해줘. Pika 영상으로 만들 때 어떤 점을 더 강조하거나, 어떤 부분을 간결하게 표현하면 좋을지 등 실질적인 조언을 포함해줘.\n"
+                "\n"
+                "항상 학생의 창의성을 존중하고 칭찬과 격려의 말투를 꼭 유지해줘."
+            )}
+        ]
+        st.session_state.story_input_submitted = False
+        st.rerun()
+
+# 2. 이야기 나누기 (장면 분할) - 설계 반영
 elif chat_option.startswith("2"):
-    st.header("2. 이야기 나누기 (장면 분할)")
-    st.markdown("✂️ **목표:** 긴 이야기를 10초 내외의 짧은 영상 장면으로 나누고, 각 장면의 핵심 요소를 명확히 해보세요.")
+    st.header("2. 이야기 나누기")
+    st.markdown("📝 **목표:** 완성된 이야기를 영상 제작을 위한 여러 장면으로 나누어 보세요. 각 장면은 어떤 내용으로 구성될까요?")
 
-    if "scenes" not in st.session_state:
-        st.session_state.scenes = {}
-    if "scene_count" not in st.session_state:
-        st.session_state.scene_count = 1
-
-    # 장면 입력 필드
-    # Scene input fields
-    for i in range(1, st.session_state.scene_count + 1):
-        st.session_state.scenes[f"part_{i}"] = st.text_area(
-            f"장면 {i} 입력",
-            value=st.session_state.scenes.get(f"part_{i}", ""),
-            key=f"part_{i}"
-        )
-        if st.session_state.scenes[f"part_{i}"]:
-            messages = [
-                {"role": "system", "content": (
-                    GLOBAL_GPT_DIRECTIVES +
-                    "너는 학생의 이야기를 10초 내외로 나눠서 Pika 영상 장면으로 구성하도록 돕는 조력자야.\n"
-                    "각 장면에서 시간, 장소, 등장인물, 사건을 파악하고, 이전 장면과 구분되는 요소인지 질문을 통해 확인해.\n"
-                    "이미 입력된 정보는 묻지 않고, 누락된 정보만 자연스럽게 질문해줘.\n"
-                    "필요하다면 이 장면을 나누거나 앞 장면과 합치는 것이 더 자연스러운지도 알려줘."
-                )},
-                {"role": "user", "content": st.session_state.scenes[f"part_{i}"]}
-            ]
-            st.markdown(f"**GPT 피드백 (장면 {i})**")
-            with st.spinner(f"GPT가 장면 {i}를 점검 중입니다..."):
-                st.write(ask_gpt(messages))
-        st.markdown("---") # 각 장면 구분을 위한 시각적 구분자
-                             # Visual separator for each scene
-
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.session_state.scene_count < 9: # 최대 9개 장면 제한
-                                             # Maximum 9 scenes limit
-            if st.button("새 장면 추가"):
-                st.session_state.scene_count += 1
-                st.rerun() # Changed from st.experimental_rerun() to st.rerun()
-    with col2:
-        if st.button("모든 장면 입력 완료 및 최종 피드백 받기"):
-            all_scenes_content = "\n".join([
-                f"장면 {i}: {st.session_state.scenes[f'part_{i}']}"
-                for i in range(1, st.session_state.scene_count + 1)
-                if st.session_state.scenes.get(f'part_{i}')
-            ])
-
-            if all_scenes_content.strip(): # 공백만 있는 경우를 방지
-                                          # Prevent case where only whitespace exists
-                final_feedback_messages = [
-                    {"role": "system", "content": (
-                        GLOBAL_GPT_DIRECTIVES +
-                        "너는 초등학생이 나눈 이야기 장면들의 전체적인 흐름을 검토하고 최종적인 피드백을 제공하는 GPT 도우미야.\n"
-                        "학생이 입력한 전체 장면들을 보고, 이야기의 흐름이 자연스러운지, 빠지거나 중복되는 부분은 없는지 확인해줘.\n"
-                        "각 장면이 Pika를 사용한 10초 내외의 영상으로 구성하기에 적절한지, 전체적으로 1분~1분 30초 분량의 영상이 나올 수 있을지 조언해줘.\n"
-                        "필요하다면 장면의 순서 조정이나 통합, 재분할에 대한 조언을 격려하는 말투로 제시해줘."
-                    )},
-                    {"role": "user", "content": f"학생이 나눈 전체 이야기는 다음과 같습니다:\n\n{all_scenes_content}\n\n이 전체 이야기에 대해 최종적으로 점검하고 피드백을 부탁드립니다."}
-                ]
-                st.subheader("💡 최종 이야기 흐름 점검 GPT 피드백")
-                with st.spinner("GPT가 전체 이야기를 점검 중입니다..."):
-                    st.write(ask_gpt(final_feedback_messages))
-            else:
-                st.warning("먼저 하나 이상의 장면을 입력해주세요.")
-
-# 3. 이미지 생성
-# 3. Image Generation
-elif chat_option.startswith("3"):
-    st.header("3. 캐릭터/배경 이미지 프롬프트 구성 및 생성")
-    st.markdown("🎨 **목표:** Pika 영상에 사용할 캐릭터나 배경의 대표 이미지를 만들 프롬프트를 GPT와 함께 구체화하고 직접 이미지를 생성해 보세요.")
-    st.markdown("**💡 팁:** Pika 영상에 쓰일 대표 이미지이므로, **캐릭터는 꼭 배경 없이 전신**으로, **단순하고 명확하게** 묘사하는 것이 좋아요!")
-
-    if "image_history" not in st.session_state:
-        st.session_state.image_history = []
-        st.session_state.current_prompt = ""
-
-    concept = st.text_area("만들고 싶은 캐릭터나 배경을 설명해주세요 (예: 숲 속을 탐험하는 용감한 소년)")
-    if st.button("GPT에게 프롬프트 구성 요청") and concept:
-        system_prompt = (
-            GLOBAL_GPT_DIRECTIVES +
-            "너는 학생의 상상을 바탕으로 Pika 영상에 사용할 캐릭터나 배경 이미지를 만들기 위한 프롬프트를 구성해주는 GPT야.\n"
-            "이 이미지는 Pika에서 영상을 생성할 때 사용할 대표 이미지임을 인지하고, 과도한 묘사 없이 핵심 특징을 잘 나타내도록 도와줘.\n"
-            "입력된 설명에 포함되지 않은 정보(대상 구분(캐릭터/배경), 스타일(예: 스누피 펜화, 디즈니풍), 외형, 표정, 자세 등)를 질문해서 보완해줘.\n"
-            "특히, **캐릭터 이미지는 반드시 배경 없이 전체 몸이 보이도록** 해야 하고, 다양한 구도보다는 캐릭터의 특징을 잘 보여주는 하나의 명확한 이미지를 목표로 해.\n"
-            "충분한 정보가 수집되면, 마지막에 '완성된 이미지 프롬프트는 다음과 같아요:' 형식으로 프롬프트를 보여주고,\n"
-            "그 프롬프트로 이미지를 생성해서 보여줘."
-        )
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": concept}
-        ]
-        with st.spinner("GPT가 프롬프트를 구성 중입니다..."):
-            gpt_response = ask_gpt(messages)
-        st.write(gpt_response)
-
-        if "완성된 이미지 프롬프트는 다음과 같아요:" in gpt_response:
-            prompt_line = gpt_response.split("완성된 이미지 프롬프트는 다음과 같아요:")[-1].strip()
-            # 프롬프트 앞뒤의 따옴표나 공백 제거
-            # Remove quotes or spaces from the beginning/end of the prompt
-            prompt = prompt_line.strip("'").strip("\"")
-            st.session_state.current_prompt = prompt
-            with st.spinner("이미지를 생성 중입니다..."):
-                image = generate_image(prompt)
-            st.session_state.image_history = [(prompt, image)]
-
-    # 이미지 피드백 루프
-    # Image feedback loop
-    if st.session_state.image_history:
-        prompt, image = st.session_state.image_history[-1]
-        st.image(image, caption="생성된 이미지", use_column_width=True)
-
-        buf = io.BytesIO()
-        image.save(buf, format="PNG")
-        st.download_button(
-            label="이미지 다운로드",
-            data=buf.getvalue(),
-            file_name="generated_image.png",
-            mime="image/png"
-        )
-
-        st.subheader("이미지 확인 및 수정")
-        feedback = st.radio("이 이미지가 마음에 드시나요?", ["네, 다음 그림으로 넘어가기", "아니요, 수정하고 싶어요"], key="img_feedback")
-
-        if feedback == "아니요, 수정하고 싶어요":
-            revise = st.text_input("어떤 부분을 수정하고 싶나요? (예: 모자 색깔을 빨간색으로, 표정을 더 밝게)", key="img_revise")
-            if st.button("수정된 이미지 생성") and revise:
-                # Pika 특성을 고려하여, 수정 사항을 기존 프롬프트에 단순하게 추가
-                # Considering Pika's characteristics, simply add revisions to the existing prompt
-                revised_prompt = f"{st.session_state.current_prompt}, 단 {revise}"
-                with st.spinner("수정된 이미지 생성 중입니다..."):
-                    revised_image = generate_image(revised_prompt)
-                    st.session_state.image_history.append((revised_prompt, revised_image))
-                    st.rerun() # Changed from st.experimental_rerun() to st.rerun()
-        elif feedback == "네, 다음 그림으로 넘어가기":
-            st.success("다음 캐릭터 또는 배경 입력 단계로 넘어갈 준비가 되었습니다.")
-            # 다음 이미지 생성을 위해 상태 초기화 (선택 사항, 필요에 따라 유지 가능)
-            # Reset state for next image generation (optional, can be maintained if needed)
-            # st.session_state.image_history = []
-            # st.session_state.current_prompt = ""
-
-
-# 4. 장면별 영상 프롬프트 점검
-# 4. Scene-by-Scene Video Prompt Review
-elif chat_option.startswith("4"):
-    st.header("4. 장면별 영상 프롬프트 점검")
-    st.markdown("🎥 **목표:** 각 장면을 Pika 영상으로 만들기 위한 프롬프트를 GPT와 함께 최종 점검하고 간결하게 완성해 보세요.")
-    st.markdown("**💡 팁:** Pika는 복잡한 프롬프트보다 **짧고 핵심적인 문장**에 더 잘 반응해요! 동작, 감정, 구도에 집중하세요.")
-
-    scene = st.text_area("영상으로 만들 장면 설명을 입력하세요 (예: 토끼가 숲 속을 뛰어다니며 당근을 발견한다.)")
-    if st.button("GPT에게 프롬프트 점검 요청") and scene:
-        messages = [
+    if "segmented_story_input" not in st.session_state:
+        st.session_state.segmented_story_input = ""
+    if "messages_segmentation" not in st.session_state:
+        st.session_state.messages_segmentation = [
             {"role": "system", "content": (
                 GLOBAL_GPT_DIRECTIVES +
-                "너는 학생이 입력한 장면 설명을 바탕으로 Pika에서 사용할 10초 분량 영상 프롬프트가 적절한지 검토하는 GPT야.\n"
-                "Pika의 프롬프트 해석 특성상, **짧고 간결하며 명확한 1~2문장**의 프롬프트가 중요해. 과도한 문장 길이, 서술적인 묘사는 피해야 해.\n"
-                "캐릭터와 배경 이미지는 따로 생성하므로, 이 창에서는 장면의 **동작, 감정, 구도(전체 몸, 시점), 강조하고 싶은 요소** 중심으로 질문하고 보완해.\n"
-                "질문은 필요한 경우에만 하고, 정보가 충분하면 간결한 1~2문장 형태로 최종 프롬프트를 출력해줘. 이때, 불필요한 서두는 제외하고 프롬프트만 명확히 제시해야 해."
-            )},
-            {"role": "user", "content": scene}
+                "너는 초등학생의 이야기를 Pika 영상 제작에 적합한 장면으로 나누는 것을 돕는 GPT 도우미야.\n"
+                [cite_start]"학생이 제공한 이야기를 읽고, 주요 사건과 내용의 흐름을 바탕으로 이야기를 **6~9개 정도의 장면으로 나누어 제시해줘.** [cite: 21]\n"
+                "각 장면에 대해 **시간, 장소, 등장인물, 사건**을 질문하여 구체화하도록 유도해. [cite_start]이 정보는 이미 입력된 정보는 묻지 않고, 누락된 정보만 질문해야 해. [cite: 22, 6]\n"
+                "각 장면은 다음 형식으로 제안해줘:\n"
+                "**[장면 번호]**: [장면 요약 (20자 이내)]\n"
+                "예시:\n"
+                "**장면 1**: 주인공 등장과 배경 소개\n"
+                "**장면 2**: 갈등의 시작\n"
+                "**장면 3**: 해결을 위한 노력\n"
+                "**장면 4**: 문제 해결의 순간\n"
+                "**장면 5**: 행복한 마무리\n"
+                "\n"
+                "학생의 이야기에 기반하여 장면을 나눈 후, '어때요? 이렇게 나누어 봤는데, 더 추가하거나 바꾸고 싶은 장면이 있나요?'와 같이 질문하여 학생의 의견을 물어봐줘.\n"
+                "학생이 추가적으로 장면을 수정하거나 세분화하고 싶다고 하면, 이에 맞춰 다시 장면 목록을 업데이트하여 제시해줘.\n"
+                [cite_start]"앞 장면과 비교하여 중복되거나 통합 가능한 장면이 있다면 자연스럽게 지적하고 조언해줘. [cite: 23]\n"
+                [cite_start]"모든 장면이 입력된 후 전체 흐름을 검토하고 장면 재분할 또는 통합을 조언해줘. [cite: 24]\n"
+                [cite_start]"질문은 필요한 정보만 해야 해. [cite: 26] [cite_start]장면이 불필요하게 나뉘거나 빠진 경우 자연스럽게 피드백하고 격려하는 언어를 사용해줘. [cite: 27, 28]\n"
+                "최종적으로 장면 구분이 완료되면, '이제 각 장면에 어떤 내용을 담을지 구체적으로 이야기해볼까요?'라고 물어봐줘."
+            )}
         ]
-        with st.spinner("GPT가 영상 프롬프트을 점검 중입니다..."):
-            st.write(ask_gpt(messages))
+    if "segmentation_completed" not in st.session_state:
+        st.session_state.segmentation_completed = False
+
+    story_for_segmentation = st.text_area("점검이 완료된 이야기를 여기에 붙여넣어 주세요.", value=st.session_state.segmented_story_input, key="segment_input_area")
+
+    if st.button("이야기 장면 나누기 시작") and story_for_segmentation:
+        st.session_state.segmented_story_input = story_for_segmentation
+        st.session_state.messages_segmentation.append({"role": "user", "content": story_for_segmentation})
+        with st.spinner("GPT가 장면을 나누는 중입니다..."):
+            gpt_response = ask_gpt(st.session_state.messages_segmentation)
+            st.session_state.messages_segmentation.append({"role": "assistant", "content": gpt_response})
+        st.rerun()
+
+    for message in st.session_state.messages_segmentation:
+        if message["role"] != "system":
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+    if not st.session_state.segmentation_completed:
+        if prompt := st.chat_input("장면 구분에 대해 이야기하거나 수정하고 싶은 부분을 알려주세요."):
+            st.session_state.messages_segmentation.append({"role": "user", "content": prompt})
+            with st.spinner("GPT가 답변을 생성 중입니다..."):
+                gpt_response = ask_gpt(st.session_state.messages_segmentation)
+                st.session_state.messages_segmentation.append({"role": "assistant", "content": gpt_response})
+            st.rerun()
+
+    if st.button("장면 나누기 초기화", key="reset_segmentation_chat"):
+        st.session_state.messages_segmentation = [
+            {"role": "system", "content": (
+                GLOBAL_GPT_DIRECTIVES +
+                "너는 초등학생의 이야기를 Pika 영상 제작에 적합한 장면으로 나누는 것을 돕는 GPT 도우미야.\n"
+                [cite_start]"학생이 제공한 이야기를 읽고, 주요 사건과 내용의 흐름을 바탕으로 이야기를 **6~9개 정도의 장면으로 나누어 제시해줘.** [cite: 21]\n"
+                "각 장면에 대해 **시간, 장소, 등장인물, 사건**을 질문하여 구체화하도록 유도해. [cite_start]이 정보는 이미 입력된 정보는 묻지 않고, 누락된 정보만 질문해야 해. [cite: 22, 6]\n"
+                "각 장면은 다음 형식으로 제안해줘:\n"
+                "**[장면 번호]**: [장면 요약 (20자 이내)]\n"
+                "예시:\n"
+                "**장면 1**: 주인공 등장과 배경 소개\n"
+                "**장면 2**: 갈등의 시작\n"
+                "**장면 3**: 해결을 위한 노력\n"
+                "**장면 4**: 문제 해결의 순간\n"
+                "**장면 5**: 행복한 마무리\n"
+                "\n"
+                "학생의 이야기에 기반하여 장면을 나눈 후, '어때요? 이렇게 나누어 봤는데, 더 추가하거나 바꾸고 싶은 장면이 있나요?'와 같이 질문하여 학생의 의견을 물어봐줘.\n"
+                "학생이 추가적으로 장면을 수정하거나 세분화하고 싶다고 하면, 이에 맞춰 다시 장면 목록을 업데이트하여 제시해줘.\n"
+                [cite_start]"앞 장면과 비교하여 중복되거나 통합 가능한 장면이 있다면 자연스럽게 지적하고 조언해줘. [cite: 23]\n"
+                [cite_start]"모든 장면이 입력된 후 전체 흐름을 검토하고 장면 재분할 또는 통합을 조언해줘. [cite: 24]\n"
+                [cite_start]"질문은 필요한 정보만 해야 해. [cite: 26] [cite_start]장면이 불필요하게 나뉘거나 빠진 경우 자연스럽게 피드백하고 격려하는 언어를 사용해줘. [cite: 27, 28]\n"
+                "최종적으로 장면 구분이 완료되면, '이제 각 장면에 어떤 내용을 담을지 구체적으로 이야기해볼까요?'라고 물어봐줘."
+            )}
+        ]
+        st.session_state.segmented_story_input = ""
+        st.session_state.segmentation_completed = False
+        st.rerun()
+
+# 3. 캐릭터/배경 이미지 생성 프롬프트 구성 - 설계 반영
+elif chat_option.startswith("3"):
+    st.header("3. 캐릭터/배경 이미지 생성")
+    st.markdown("🎨 **목표:** 여러분의 이야기에 등장하는 캐릭터나 배경 이미지를 직접 만들어 볼 수 있어요.")
+
+    if "messages_image_generation" not in st.session_state:
+        st.session_state.messages_image_generation = [
+            {"role": "system", "content": (
+                GLOBAL_GPT_DIRECTIVES +
+                [cite_start]"너는 초등학생이 설명한 캐릭터 또는 배경을 이미지 생성에 적합한 프롬프트로 구체화하는 GPT 도우미야. [cite: 31]\n"
+                [cite_start]"학생에게 다음 요소를 모두 포함하도록 질문을 통해 유도해줘 (단, 이미 입력된 정보는 묻지 않고 누락된 정보만 질문): [cite: 32, 6]\n"
+                [cite_start]"- **대상**: 캐릭터인지 배경인지 명확히 해줘. [cite: 33] (예: '주인공', '마법의 숲')\n"
+                [cite_start]"- **스타일**: 어떤 그림 스타일을 원하는지 물어봐줘. [cite: 34] (예: '스누피 펜화', '디즈니 애니메이션 스타일', '수채화 느낌', '실사 같은', '미래적인')\n"
+                [cite_start]"- **외형, 표정, 자세**: 구체적인 모습, 표정, 어떤 자세를 취하고 있는지 물어봐줘. [cite: 35] (예: '밝게 웃고 있는', '한 손을 흔들고 있는', '초록색 머리카락의')\n"
+                [cite_start]"- **전체 몸이 보이는지 여부**: 캐릭터의 경우, '캐릭터의 전체 몸이 다 보이도록 할까요?'라고 꼭 물어봐줘. [cite: 36, 7]\n"
+                "- **배경 포함 여부**: 캐릭터 이미지의 경우, '배경은 없이 인물만 있는 건가요?'라고 물어봐줘. [cite_start]배경 이미지의 경우, '어떤 풍경이나 분위기를 담고 싶은가요?'라고 물어봐줘. [cite: 37, 7]\n"
+                "\n"
+                "학생이 프롬프트 초안을 입력하면, 위 요소들을 바탕으로 부족한 부분을 단일 질문으로 추가 질문하여 정보를 채워나가줘.\n"
+                [cite_start]"필요한 정보가 모두 수집되면, 완성된 프롬프트를 깔끔하게 정리하여 출력하고, 이 프롬프트로 이미지를 생성할 수 있음을 알려줘. [cite: 38]\n"
+                [cite_start]"**주의사항:** 학생에게 바로 이미지 프롬프트를 제공하지 않고, 질문을 통해 구체화해야 해. [cite: 41] [cite_start]캐릭터는 반드시 배경 없이, 전체 전신으로 생성되어야 함을 염두에 두고 질문을 이끌어내야 해. [cite: 42] [cite_start]질문은 자연스럽고 흐름에 맞게 진행해줘. [cite: 43]\n"
+            )}
+        ]
+        st.session_state.image_prompt_collected = False
+        st.session_state.generated_image_display = None
+        st.session_state.image_input_submitted = False
+        st.session_state.final_dalle_prompt = ""
+
+    image_type = st.radio("어떤 이미지를 만들고 싶나요?", ["캐릭터 이미지", "배경 이미지"], key="image_type_radio")
+    
+    if not st.session_state.image_input_submitted:
+        initial_prompt = st.text_area(f"{image_type}에 대해 설명해주세요. (예: '용감한 기사', '신비로운 숲')", key="initial_image_prompt")
+        if st.button("프롬프트 구체화 시작") and initial_prompt:
+            st.session_state.messages_image_generation.append({"role": "user", "content": initial_prompt})
+            st.session_state.image_input_submitted = True
+            with st.spinner("GPT가 질문을 생성 중입니다..."):
+                gpt_response = ask_gpt(st.session_state.messages_image_generation)
+                st.session_state.messages_image_generation.append({"role": "assistant", "content": gpt_response})
+            st.rerun()
+
+    for message in st.session_state.messages_image_generation:
+        if message["role"] != "system":
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+    if st.session_state.image_input_submitted:
+        if current_prompt := st.chat_input("GPT의 질문에 답하거나 설명을 추가해주세요."):
+            st.session_state.messages_image_generation.append({"role": "user", "content": current_prompt})
+            with st.spinner("GPT가 답변을 생성 중입니다..."):
+                gpt_response = ask_gpt(st.session_state.messages_image_generation)
+                st.session_state.messages_image_generation.append({"role": "assistant", "content": gpt_response})
+            st.rerun()
+
+        # Check if the last GPT message seems to be a finalized prompt
+        if st.session_state.messages_image_generation and \
+           st.session_state.messages_image_generation[-1]["role"] == "assistant" and \
+           "완성된 프롬프트:" in st.session_state.messages_image_generation[-1]["content"] and \
+           not st.session_state.image_prompt_collected: # Only collect once
+            
+            gpt_final_prompt_content = st.session_state.messages_image_generation[-1]["content"]
+            start_index = gpt_final_prompt_content.find("완성된 프롬프트:") + len("완성된 프롬프트:")
+            end_index = gpt_final_prompt_content.find("\n", start_index)
+            if end_index == -1:
+                final_dalle_prompt = gpt_final_prompt_content[start_index:].strip()
+            else:
+                final_dalle_prompt = gpt_final_prompt_content[start_index:end_index].strip()
+            
+            st.session_state.image_prompt_collected = True
+            st.session_state.final_dalle_prompt = final_dalle_prompt
+            st.info(f"✨ GPT가 최종 이미지 프롬프트를 완성했어요: `{final_dalle_prompt}`")
+
+    if st.session_state.get("image_prompt_collected", False):
+        if st.button("이 프롬프트로 이미지 생성하기"):
+            if st.session_state.get("final_dalle_prompt"):
+                with st.spinner("이미지를 생성 중입니다... 잠시만 기다려주세요!"):
+                    try:
+                        generated_img = generate_image(st.session_state.final_dalle_prompt)
+                        st.session_state.generated_image_display = generated_img
+                        st.success("이미지가 성공적으로 생성되었습니다!")
+                    except Exception as e:
+                        st.error(f"이미지 생성 중 오류가 발생했습니다: {e}. 프롬프트를 다시 확인하거나 잠시 후 다시 시도해주세요.")
+            else:
+                st.warning("먼저 GPT로부터 완성된 이미지 프롬프트를 받아야 합니다.")
+        
+        if st.session_state.generated_image_display:
+            st.image(st.session_state.generated_image_display, caption=f"생성된 {image_type}", use_column_width=True)
+            buf = io.BytesIO()
+            st.session_state.generated_image_display.save(buf, format="PNG")
+            byte_im = buf.getvalue()
+            st.download_button(
+                label="이미지 다운로드",
+                data=byte_im,
+                file_name=f"{image_type}_generated.png",
+                mime="image/png"
+            )
+
+
+    if st.button("이미지 생성 초기화", key="reset_image_generation_chat"):
+        st.session_state.messages_image_generation = [
+            {"role": "system", "content": (
+                GLOBAL_GPT_DIRECTIVES +
+                [cite_start]"너는 초등학생이 설명한 캐릭터 또는 배경을 이미지 생성에 적합한 프롬프트로 구체화하는 GPT 도우미야. [cite: 31]\n"
+                [cite_start]"학생에게 다음 요소를 모두 포함하도록 질문을 통해 유도해줘 (단, 이미 입력된 정보는 묻지 않고 누락된 정보만 질문): [cite: 32, 6]\n"
+                [cite_start]"- **대상**: 캐릭터인지 배경인지 명확히 해줘. [cite: 33] (예: '주인공', '마법의 숲')\n"
+                [cite_start]"- **스타일**: 어떤 그림 스타일을 원하는지 물어봐줘. [cite: 34] (예: '스누피 펜화', '디즈니 애니메이션 스타일', '수채화 느낌', '실사 같은', '미래적인')\n"
+                [cite_start]"- **외형, 표정, 자세**: 구체적인 모습, 표정, 어떤 자세를 취하고 있는지 물어봐줘. [cite: 35] (예: '밝게 웃고 있는', '한 손을 흔들고 있는', '초록색 머리카락의')\n"
+                [cite_start]"- **전체 몸이 보이는지 여부**: 캐릭터의 경우, '전신이 다 보이는 모습인가요?'라고 꼭 물어봐줘. [cite: 36, 7]\n"
+                "- **배경 포함 여부**: 캐릭터 이미지의 경우, '배경은 없이 인물만 있는 건가요?'라고 물어봐줘. [cite_start]배경 이미지의 경우, '어떤 풍경이나 분위기를 담고 싶은가요?'라고 물어봐줘. [cite: 37, 7]\n"
+                "\n"
+                "학생이 프롬프트 초안을 입력하면, 위 요소들을 바탕으로 부족한 부분을 단일 질문으로 추가 질문하여 정보를 채워나가줘.\n"
+                [cite_start]"필요한 정보가 모두 수집되면, 완성된 프롬프트를 깔끔하게 정리하여 출력하고, 이 프롬프트로 이미지를 생성할 수 있음을 알려줘. [cite: 38]\n"
+                [cite_start]"**주의사항:** 학생에게 바로 이미지 프롬프트를 제공하지 않고, 질문을 통해 구체화해야 해. [cite: 41] [cite_start]캐릭터는 반드시 배경 없이, 전체 전신으로 생성되어야 함을 염두에 두고 질문을 이끌어내야 해. [cite: 42] [cite_start]질문은 자연스럽고 흐름에 맞게 진행해줘. [cite: 43]\n"
+            )}
+        ]
+        st.session_state.image_prompt_collected = False
+        st.session_state.generated_image_display = None
+        st.session_state.image_input_submitted = False
+        st.session_state.final_dalle_prompt = ""
+        st.rerun()
+
+# 4. 장면별 영상 Prompt 점검 - 설계 반영
+elif chat_option.startswith("4"):
+    st.header("4. 장면별 영상 Prompt 점검")
+    st.markdown("🎬 **목표:** 각 장면에 맞는 Pika 영상 프롬프트를 만들고, 더 좋은 프롬프트로 다듬어 보세요.")
+
+    st.warning("이 기능은 '2. 이야기 나누기'에서 장면 구분이 완료된 후에 사용하는 것이 좋습니다.")
+
+    if "messages_video_prompt" not in st.session_state:
+        st.session_state.messages_video_prompt = [
+            {"role": "system", "content": (
+                GLOBAL_GPT_DIRECTIVES +
+                [cite_start]"너는 초등학생이 작성한 장면 설명을 기반으로, **10초 이내의 영상으로 구성 가능한 장면인지 확인**해줘. [cite: 46]\n"
+                "Pika AI가 더 잘 이해하고 멋진 영상을 만들 수 있도록 프롬프트를 구체적이고 생생하게 개선해줘.\n"
+                [cite_start]"다음 요소를 중심으로 질문하여 (단, 누락된 경우에만) 구체화하도록 유도해줘: [cite: 47]\n"
+                [cite_start]"- **동작**: 인물이나 사물이 어떤 움직임을 보이는지? [cite: 48] (예: '뛰어간다', '천천히 춤춘다')\n"
+                [cite_start]"- **감정**: 인물의 표정이나 장면의 분위기는 어떤지? [cite: 49] (예: '슬픈 표정의', '희망찬 분위기의')\n"
+                [cite_start]"- **구도**: 카메라가 인물을 어떻게 잡을지? [cite: 50] (예: '전체 몸', '상반신', '로우 앵글 샷')\n"
+                [cite_start]"- **강조하고 싶은 요소**: 이 장면에 특별히 강조하고 싶은 것이 있다면 무엇인지? [cite: 51] (예: '반짝이는 마법 효과', '아름다운 노을')\n"
+                "\n"
+                "학생이 프롬프트 초안을 입력하면, 위 요소들을 바탕으로 부족한 부분을 단일 질문으로 추가 질문하여 정보를 채워나가줘.\n"
+                [cite_start]"구체화가 완료되면, **간결한 1~2문장 형태**로 최종 프롬프트를 정리하여 출력해줘. [cite: 52]\n"
+                "**주의사항:**\n"
+                [cite_start]"- 문장이 너무 길거나 과도한 서술은 지양해야 해. [cite: 54] [cite_start](Pika의 프롬프트 해석 특성상, 장면 설명은 짧고 명확하게 구성해야 하며, 과도한 문장 길이나 묘사는 피함. [cite: 8])\n"
+                "- 캐릭터나 배경의 외형 묘사는 이 창에서 다루지 않아. [cite_start]이는 '캐릭터/배경 이미지 생성'에서 이미 결정된 부분이야. [cite: 55]\n"
+                [cite_start]"- 최종적으로 정제된 프롬프트만 출력하고, 불필요한 질문 반복은 금지해. [cite: 56]\n"
+                "\n"
+                "학생이 '완료' 또는 '충분하다'고 하면, 최종 프롬프트를 확정하고 '이제 이 프롬프트로 멋진 영상을 만들 수 있을 거예요!'라고 격려해줘."
+            )}
+        ]
+        st.session_state.current_scene_prompt = ""
+        st.session_state.video_prompt_finalized = False
+
+    scene_summary = st.text_input("장면 요약을 입력하세요 (예: '주인공이 마법의 숲에 도착하는 장면')", key="scene_summary_input")
+    user_prompt_draft = st.text_area("이 장면에 대한 Pika 영상 프롬프트 초안을 작성하세요.", key="video_prompt_draft_input", value=st.session_state.current_scene_prompt)
+
+    if st.button("프롬프트 점검 시작") and scene_summary and user_prompt_draft:
+        st.session_state.current_scene_prompt = user_prompt_draft
+        full_user_message = f"장면 요약: {scene_summary}\n프롬프트 초안: {user_prompt_draft}"
+        st.session_state.messages_video_prompt.append({"role": "user", "content": full_user_message})
+        with st.spinner("GPT가 프롬프트를 점검 중입니다..."):
+            gpt_response = ask_gpt(st.session_state.messages_video_prompt)
+            st.session_state.messages_video_prompt.append({"role": "assistant", "content": gpt_response})
+        st.rerun()
+
+    for message in st.session_state.messages_video_prompt:
+        if message["role"] != "system":
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+    if not st.session_state.video_prompt_finalized:
+        if prompt := st.chat_input("GPT의 제안에 대해 이야기하거나 프롬프트를 수정해주세요."):
+            st.session_state.messages_video_prompt.append({"role": "user", "content": prompt})
+            with st.spinner("GPT가 답변을 생성 중입니다..."):
+                gpt_response = ask_gpt(st.session_state.messages_video_prompt)
+                st.session_state.messages_video_prompt.append({"role": "assistant", "content": gpt_response})
+            st.rerun()
+        
+        # GPT가 최종 프롬프트를 제시했는지 확인
+        if st.session_state.messages_video_prompt and \
+           st.session_state.messages_video_prompt[-1]["role"] == "assistant" and \
+           ("최종 프롬프트:" in st.session_state.messages_video_prompt[-1]["content"] or \
+            "이 프롬프트로 멋진 영상을 만들 수 있을 거예요!" in st.session_state.messages_video_prompt[-1]["content"]):
+            st.session_state.video_prompt_finalized = True
+            st.success("✅ 영상 프롬프트 점검이 완료되었습니다!")
+
+
+    if st.button("프롬프트 점검 초기화", key="reset_video_prompt_chat"):
+        st.session_state.messages_video_prompt = [
+            {"role": "system", "content": (
+                GLOBAL_GPT_DIRECTIVES +
+                "너는 초등학생이 Pika 영상 제작을 위한 효과적인 장면별 프롬프트를 만드는 것을 돕는 GPT 도우미야.\n"
+                [cite_start]"학생이 작성한 장면 설명을 기반으로, **10초 이내의 영상으로 구성 가능한 장면인지 확인**해줘. [cite: 46]\n"
+                "Pika AI가 더 잘 이해하고 멋진 영상을 만들 수 있도록 프롬프트를 구체적이고 생생하게 개선해줘.\n"
+                [cite_start]"다음 요소를 중심으로 질문하여 (단, 누락된 경우에만) 구체화하도록 유도해줘: [cite: 47]\n"
+                [cite_start]"- **동작**: 인물이나 사물이 어떤 움직임을 보이는지? [cite: 48] (예: '뛰어간다', '천천히 춤춘다')\n"
+                [cite_start]"- **감정**: 인물의 표정이나 장면의 분위기는 어떤지? [cite: 49] (예: '슬픈 표정의', '희망찬 분위기의')\n"
+                [cite_start]"- **구도**: 카메라가 인물을 어떻게 잡을지? [cite: 50] (예: '전체 몸', '상반신', '로우 앵글 샷')\n"
+                [cite_start]"- **강조하고 싶은 요소**: 이 장면에 특별히 강조하고 싶은 것이 있다면 무엇인지? [cite: 51] (예: '반짝이는 마법 효과', '아름다운 노을')\n"
+                "\n"
+                "학생이 프롬프트 초안을 입력하면, 위 요소들을 바탕으로 부족한 부분을 단일 질문으로 추가 질문하여 정보를 채워나가줘.\n"
+                [cite_start]"구체화가 완료되면, **간결한 1~2문장 형태**로 최종 프롬프트를 정리하여 출력해줘. [cite: 52]\n"
+                "**주의사항:**\n"
+                [cite_start]"- 문장이 너무 길거나 과도한 서술은 지양해야 해. [cite: 54] [cite_start](Pika의 프롬프트 해석 특성상, 장면 설명은 짧고 명확하게 구성해야 하며, 과도한 문장 길이나 묘사는 피함. [cite: 8])\n"
+                "- 캐릭터나 배경의 외형 묘사는 이 창에서 다루지 않아. [cite_start]이는 '캐릭터/배경 이미지 생성'에서 이미 결정된 부분이야. [cite: 55]\n"
+                [cite_start]"- 최종적으로 정제된 프롬프트만 출력하고, 불필요한 질문 반복은 금지해. [cite: 56]\n"
+                "\n"
+                "학생이 '완료' 또는 '충분하다'고 하면, 최종 프롬프트를 확정하고 '이제 이 프롬프트로 멋진 영상을 만들 수 있을 거예요!'라고 격려해줘."
+            )}
+        ]
+        st.session_state.current_scene_prompt = ""
+        st.session_state.video_prompt_finalized = False
+        st.rerun()
