@@ -5,6 +5,9 @@ import base64
 import io
 
 # OpenAI API 키 설정 (Streamlit Secrets에서 가져옴)
+# Streamlit Secrets를 사용하는 방법은 프로젝트의 .streamlit/secrets.toml 파일에 다음과 같이 API 키를 저장하는 것입니다:
+# [openai]
+# api_key="YOUR_OPENAI_API_KEY"
 client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 
 
@@ -35,7 +38,8 @@ def generate_image(prompt):
         size="1024x1024",
         response_format="b64_json"
     )
-    image_data = base64.b64decode(response.data[0].b6    4_json)
+    # --- 오류 수정: 'b6 4_json' -> 'b64_json'으로 공백 제거 ---
+    image_data = base64.b64decode(response.data[0].b64_json)
     return Image.open(io.BytesIO(image_data))
 
 # 모든 GPT 시스템 프롬프트에 공통으로 들어갈 지침
@@ -82,86 +86,6 @@ if chat_option.startswith("1"):
     - '이야기는 어떻게 마무리되나요? 결말 부분에서 주인공에게 어떤 변화가 있었나요?'
 5.  **어색하거나 불분명한 문장/표현 (질문을 통해 유도):**
     - 만약 특정 문장이나 표현이 어색하거나 문맥에 맞지 않는다고 판단되면, **해당 문장을 직접 고쳐주기보다는 간단한 예시를 들어 학생이 스스로 수정할 수 있도록 조언**해줘. 이 조언 또한 단일 질문과 함께 제공될 수 있어.
-
-학생의 답변을 바탕으로 다음 질문을 이어나가고, 이야기가 충분히 구체화되었다고 판단되면 **최종적으로 다음과 같은 구체적이고 세세하며 학생들이 이해하기 쉬운 조언과 보완 방안을 제공해줘.**
-
-**[최종 이야기 평가 및 보완 제안]**
-
-**이야기 층위 - 내용**
-1.  **주제:** '주제가 잘 드러나는가' - [구체적 설명]. 예를 들어, '이야기의 핵심 메시지가 [현재 메시지]로 느껴지는데, [개선 방향]을 더 강조하면 주제가 더 명확해질 거예요.'
-2.  **창작 아이디어:** '아이디어가 창의적인가' - [구체적 설명]. 예를 들어, '냉장고 속 얼음 궁전이라는 아이디어는 정말 창의적이에요! 이 독특한 설정을 [구체적 예시]처럼 더 활용하면 이야기가 더욱 특별해질 거예요.'
-
-**이야기 층위 - 조직 구성**
-3.  **인물:** '누구에 대한 이야기인지 분명한가' - [구체적 설명]. 예를 들어, '엘사의 감정 변화가 잘 드러나 있지만, [특정 상황]에서 엘사가 어떤 생각을 했는지 더 자세히 보여주면 인물이 더욱 생생해질 거예요.'
-4.  **사건:** '개연성 있는 사건인가' - [구체적 설명]. 예를 들어, '사건들이 흥미롭게 이어지지만, [특정 사건]이 [이전 사건]과 왜 연결되는지 조금 더 설명하면 이야기가 더 자연스러울 거예요.'
-5.  **배경:** '배경은 상황을 잘 살려 내고 있는가' - [구체적 설명]. 예를 들어, '전쟁 중인 거리와 얼음 궁전의 대비가 좋았어요. 얼음 궁전이 엘사에게 왜 특별한 피난처였는지 [구체적 예시]처럼 더 자세히 묘사하면 배경이 더욱 중요하게 느껴질 거예요.'
-6.  **이야기 구조(발단-전개-절정-결말):** '이야기가 발단-전개-절정-결말의 구조를 잘 따르고 있는지' - [구체적 설명]. 각 단계는 다음과 같아요: 발단 - [내용 요약], 전개 - [내용 요약], 절정 - [내용 요약], 결말 - [내용 요약]. 만약 구조가 약하다면, '이야기 구조에서 [특정 부분] (예: 절정)이 조금 약하게 느껴져요. [문제점]이 있어서 [개선점]이 필요해요. 예를 들어, [구체적 예시]처럼 수정하면 더 좋을 거예요.'
-
-**표현 층위 - 표현**
-7.  **문체(문장):** '어색하거나 불분명한 문장/표현이 있는가' - [구체적 설명]. 예를 들어, '몇몇 문장(예: \'...\')이 조금 어색하거나 문맥에 맞지 않아 내용 이해가 어려울 수 있어요. 이 부분을 \'...\'처럼 바꾸면 더 명확하고 생생하게 전달될 거예요.'
-8.  **대화:** '대화가 인물의 성격을 잘 드러내고 있는가' - [구체적 설명]. 예를 들어, '현재 대화가 많지 않지만, [특정 상황]에서 인물들이 어떤 대화를 나누면 좋을지 [구체적 예시]처럼 추가해보면 인물의 성격이 더 잘 드러날 거예요.'
-9.  **지문(서술과 묘사):** '서술과 묘사는 적절하게 활용되었는가' - [구체적 설명]. 예를 들어, '냉장고 속 얼음 궁전의 묘사는 좋았어요. [다른 부분]에서도 [구체적 예시]처럼 서술과 묘사를 활용하면 이야기가 더욱 풍성해질 거예요.'
-
-**종합적인 보완 방향 및 Pika 영상 제작 조언:**
-위 평가를 종합하여 이야기 전체의 보완 방향을 구체적이고 세세하게 설명해줘. 특히, '이 부분을 보충하면 이야기가 더 풍성해지고 재미있어질 거예요.', '이 내용이 이해가 잘 안 될 수 있으니 이렇게 바꿔보면 어떨까요?'와 같이 학생들이 이해하기 쉽게 설명해줘. Pika 영상으로 만들 때 어떤 점을 더 강조하거나, 어떤 부분을 간결하게 표현하면 좋을지 등 실질적인 조언을 포함해줘.
-
-항상 학생의 창의성을 존중하고 칭찬과 격려의 말투를 꼭 유지해줘."""
-            )}
-        ]
-        st.session_state.story_input_submitted = False # Flag to check if initial story is submitted
-
-    # Display chat messages from history
-    for message in st.session_state.messages_story_review:
-        if message["role"] != "system": # Don't display system messages directly
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-
-    # Initial story input
-    if not st.session_state.story_input_submitted:
-        story = st.text_area("여러분이 창작한 이야기를 입력하세요.", key="initial_story_input")
-        if st.button("이야기 점검 시작") and story:
-            st.session_state.messages_story_review.append({"role": "user", "content": story})
-            st.session_state.story_input_submitted = True
-            # Get initial GPT response
-            with st.spinner("GPT가 이야기를 점검 중입니다..."):
-                gpt_response = ask_gpt(st.session_state.messages_story_review)
-                st.session_state.messages_story_review.append({"role": "assistant", "content": gpt_response})
-            st.rerun()
-
-    # Chat input for ongoing conversation
-    if st.session_state.story_input_submitted:
-        if prompt := st.chat_input("GPT에게 답변하거나 추가 질문을 해보세요."):
-            st.session_state.messages_story_review.append({"role": "user", "content": prompt})
-            with st.spinner("GPT가 답변을 생성 중입니다..."):
-                gpt_response = ask_gpt(st.session_state.messages_story_review)
-                st.session_state.messages_story_review.append({"role": "assistant", "content": gpt_response})
-            st.rerun()
-
-    # Optional: A button to reset the conversation
-    if st.session_state.story_input_submitted and st.button("대화 초기화", key="reset_story_review_chat"):
-        st.session_state.messages_story_review = [
-            {"role": "system", "content": (
-                GLOBAL_GPT_DIRECTIVES +
-                r"""너는 초등학생이 창작한 이야기를 Pika 영상으로 만들 수 있도록 돕는 소크라테스식 대화형 GPT 도우미야.
-학생의 이야기를 읽고, 이해되지 않거나 구체화가 필요한 부분이 있다면 **반드시 한 번에 하나의 질문만**을 통해 학생 스스로 생각하고 답하도록 유도해.
-**절대 여러 질문을 동시에 하거나, 복합적인 질문을 만들지 마.** 학생의 답변을 기다린 후 다음 질문을 이어가야 해.
-**절대 대화 초반에 요약이나 평가를 먼저 제공하지 마.** 오직 질문을 통해서만 학생의 이야기를 이끌어내야 해.
-
-질문은 다음 순서와 원칙에 따라 진행해야 해:
-1.  **이야기 요소 구체화 (전체적인 것부터 세부적인 것으로):**
-    - 주인공은 어떤 아이인지, 이야기의 배경은 어떤 곳인지, 어떤 주요 사건들이 발생하는지, 주인공 이외에 어떤 인물이 더 등장하는지 등 이야기의 핵심 요소와 관련된 질문.
-2.  **사건의 인과관계 및 흐름 확인:**
-    - 이야기 속 사건들이 왜 발생했는지, 사건 간의 연결이 논리적인지를 파악해.
-    - 원인이 불분명하거나 연결이 어색하면, 간단한 예시와 함께 다시 생각할 수 있도록 조언해줘.
-3.  **인물의 감정 및 생각:**
-    - 이 상황에서 인물이 느끼는 기분이나 생각은 무엇인지 등 (이야기의 명확성과 흐름을 돕는 맥락에서 사용).
-4.  **이야기 구조(발단-전개-절정-결말) 점검:**
-    - 이야기가 발단, 전개, 절정, 결말의 흐름에 맞게 구성되어 있는지 확인해.
-    - 각 단계에 해당하는 내용을 간단히 요약해주고, 빠지거나 흐름이 약한 단계가 있다면 구체적이고 이해하기 쉬운 수정 방향을 제시해줘.
-
-5.  **문장 표현 점검:**
-    - 이야기에서 어색한 문장이나 표현, 문맥에 맞지 않는 부분이 있다면 명확히 지적해줘.
-    - 직접 고쳐주기보다는 간단한 수정 예시를 들어 학생이 스스로 수정할 수 있도록 도와줘.
 
 학생의 답변을 바탕으로 다음 질문을 이어나가고, 이야기가 충분히 구체화되었다고 판단되면 **최종적으로 다음과 같은 구체적이고 세세하며 학생들이 이해하기 쉬운 조언과 보완 방안을 제공해줘.**
 
@@ -436,7 +360,7 @@ Pika AI가 더 잘 이해하고 멋진 영상을 만들 수 있도록 프롬프�
         st.session_state.messages_video_prompt.append({"role": "user", "content": full_user_message})
         with st.spinner("GPT가 프롬프트를 점검 중입니다..."):
             gpt_response = ask_gpt(st.session_state.messages_video_prompt)
-            st.session_state.messages_video_analysis.append({"role": "assistant", "content": gpt_response}) # Changed from _prompt to _analysis
+            st.session_state.messages_video_prompt.append({"role": "assistant", "content": gpt_response}) 
         st.rerun()
 
     for message in st.session_state.messages_video_prompt:
