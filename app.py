@@ -174,33 +174,36 @@ if chat_option.startswith("1"):
 # 2. 이야기 나누기 (장면 분할) - 설계 반영
 elif chat_option.startswith("2"):
     st.header("2. 이야기 나누기")
-    st.markdown("📝 **목표:** 완성된 이야기를 영상 제작을 위한 여러 장면으로 나누어 보세요. 각 장면은 어떤 내용으로 구성될까요?")
+    st.markdown("📝 **목표:** 여러분의 이야기를 영상 제작을 위한 여러 장면으로 나누어 보세요. 각 장면은 어떤 내용으로 구성될까요?")
+
+    # '이야기 나누기'의 새로운 시스템 프롬프트 정의
+    SEGMENTATION_SYSTEM_PROMPT = (
+        GLOBAL_GPT_DIRECTIVES +
+        """
+너는 스토리보드 작가가 되어 초등학생이 창작한 이야기를 Pika 영상 제작에 적합한 장면으로 나누는 GPT 도우미야.
+학생이 제공한 이야기를 면밀히 읽고, 원본 이야기의 내용을 최대한 유지하면서 **6장면에서 10장면 사이**로 분할해줘.
+각 장면은 **최대 10초**를 넘지 않도록 짧고 명확하게 구성해야 해.
+
+장면 분할의 주요 기준은 다음과 같아:
+- **배경의 변화**: 장소가 바뀌는 지점
+- **시간의 변화**: 아침에서 밤으로, 어제에서 오늘로 등 시간이 바뀌는 지점
+- **등장인물의 변화**: 새로운 인물이 등장하거나, 주요 인물이 사라지는 지점
+- **사건의 변화**: 이야기의 중요한 사건이 시작되거나 전환되는 지점 (발단, 전개, 위기, 절정, 결말)
+- **분위기의 변화**: 밝은 분위기에서 어두운 분위기로, 긴장에서 평화로 등 감정이나 분위기가 바뀌는 지점
+
+각 장면은 다음 형식으로 명확하게 제시해줘:
+**[장면 번호]**: [장면 요약 (20자 이내)] - [원본 이야기에서 해당 장면 내용]
+
+모든 장면을 분할한 후, 다음 문구를 추가하여 이 결과가 예시일 뿐임을 강조해줘:
+"이 장면 분할은 여러분의 이야기를 영상으로 만들 때 참고할 수 있는 **하나의 예시**일 뿐이에요. 여러분의 상상력으로 얼마든지 더 멋지게 바꿔볼 수 있답니다! 😊"
+"""
+    )
 
     if "segmented_story_input" not in st.session_state:
         st.session_state.segmented_story_input = ""
     if "messages_segmentation" not in st.session_state:
         st.session_state.messages_segmentation = [
-            {"role": "system", "content": (
-                GLOBAL_GPT_DIRECTIVES +
-                """너는 초등학생의 이야기를 Pika 영상 제작에 적합한 장면으로 나누는 것을 돕는 GPT 도우미야.
-학생이 제공한 이야기를 읽고, 주요 사건과 내용의 흐름을 바탕으로 이야기를 **6~9개 정도의 장면으로 나누어 제시해줘.**
-각 장면에 대해 **시간, 장소, 등장인물, 사건**을 질문하여 구체화하도록 유도해. 이 정보는 이미 입력된 정보는 묻지 않고, 누락된 정보만 질문해야 해.
-각 장면은 다음 형식으로 제안해줘:
-**[장면 번호]**: [장면 요약 (20자 이내)]
-예시:
-**장면 1**: 주인공 등장과 배경 소개
-**장면 2**: 갈등의 시작
-**장면 3**: 해결을 위한 노력
-**장면 4**: 문제 해결의 순간
-**장면 5**: 행복한 마무리
-
-학생의 이야기에 기반하여 장면을 나눈 후, '어때요? 이렇게 나누어 봤는데, 더 추가하거나 바꾸고 싶은 장면이 있나요?'와 같이 질문하여 학생의 의견을 물어봐줘.
-학생이 추가적으로 장면을 수정하거나 세분화하고 싶다고 하면, 이에 맞춰 다시 장면 목록을 업데이트하여 제시해줘.
-앞 장면과 비교하여 중복되거나 통합 가능한 장면이 있다면 자연스럽게 지적하고 조언해줘.
-모든 장면이 입력된 후 전체 흐름을 검토하고 장면 재분할 또는 통합을 조언해줘.
-질문은 필요한 정보만 해야 해. 장면이 불필요하게 나뉘거나 빠진 경우 자연스럽게 피드백하고 격려하는 언어를 사용해줘.
-최종적으로 장면 구분이 완료되면, '이제 각 장면에 어떤 내용을 담을지 구체적으로 이야기해볼까요?'라고 물어봐줘."""
-            )}
+            {"role": "system", "content": SEGMENTATION_SYSTEM_PROMPT}
         ]
     if "segmentation_completed" not in st.session_state:
         st.session_state.segmentation_completed = False
@@ -220,41 +223,24 @@ elif chat_option.startswith("2"):
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-    if not st.session_state.segmentation_completed:
-        if prompt := st.chat_input("장면 구분에 대해 이야기하거나 수정하고 싶은 부분을 알려주세요."):
-            st.session_state.messages_segmentation.append({"role": "user", "content": prompt})
-            with st.spinner("GPT가 답변을 생성 중입니다..."):
-                gpt_response = ask_gpt(st.session_state.messages_segmentation)
-                st.session_state.messages_segmentation.append({"role": "assistant", "content": gpt_response})
-            st.rerun()
+    # '이야기 나누기'에서는 추가적인 사용자 채팅 입력이 필요 없으므로 이 부분을 제거합니다.
+    # 대신, GPT가 한 번에 장면 분할을 완료하도록 유도합니다.
+    # if not st.session_state.segmentation_completed:
+    #     if prompt := st.chat_input("장면 구분에 대해 이야기하거나 수정하고 싶은 부분을 알려주세요."):
+    #         st.session_state.messages_segmentation.append({"role": "user", "content": prompt})
+    #         with st.spinner("GPT가 답변을 생성 중입니다..."):
+    #             gpt_response = ask_gpt(st.session_state.messages_segmentation)
+    #             st.session_state.messages_segmentation.append({"role": "assistant", "content": gpt_response})
+    #         st.rerun()
 
     if st.button("장면 나누기 초기화", key="reset_segmentation_chat"):
         st.session_state.messages_segmentation = [
-            {"role": "system", "content": (
-                GLOBAL_GPT_DIRECTIVES +
-                """너는 초등학생의 이야기를 Pika 영상 제작에 적합한 장면으로 나누는 것을 돕는 GPT 도우미야.
-학생이 제공한 이야기를 읽고, 주요 사건과 내용의 흐름을 바탕으로 이야기를 **6~9개 정도의 장면으로 나누어 제시해줘.**
-각 장면에 대해 **시간, 장소, 등장인물, 사건**을 질문하여 구체화하도록 유도해. 이 정보는 이미 입력된 정보는 묻지 않고, 누락된 정보만 질문해야 해.
-각 장면은 다음 형식으로 제안해줘:
-**[장면 번호]**: [장면 요약 (20자 이내)]
-예시:
-**장면 1**: 주인공 등장과 배경 소개
-**장면 2**: 갈등의 시작
-**장면 3**: 해결을 위한 노력
-**장면 4**: 문제 해결의 순간
-**장면 5**: 행복한 마무리
-
-학생의 이야기에 기반하여 장면을 나눈 후, '어때요? 이렇게 나누어 봤는데, 더 추가하거나 바꾸고 싶은 장면이 있나요?'와 같이 질문하여 학생의 의견을 물어봐줘.
-학생이 추가적으로 장면을 수정하거나 세분화하고 싶다고 하면, 이에 맞춰 다시 장면 목록을 업데이트하여 제시해줘.
-앞 장면과 비교하여 중복되거나 통합 가능한 장면이 있다면 자연스럽게 지적하고 조언해줘.
-모든 장면이 입력된 후 전체 흐름을 검토하고 장면 재분할 또는 통합을 조언해줘.
-질문은 필요한 정보만 해야 해. 장면이 불필요하게 나뉘거나 빠진 경우 자연스럽게 피드백하고 격려하는 언어를 사용해줘.
-최종적으로 장면 구분이 완료되면, '이제 각 장면에 어떤 내용을 담을지 구체적으로 이야기해볼까요?'라고 물어봐줘."""
-            )}
+            {"role": "system", "content": SEGMENTATION_SYSTEM_PROMPT}
         ]
         st.session_state.segmented_story_input = ""
         st.session_state.segmentation_completed = False
         st.rerun()
+
 
 # 3. 캐릭터/배경 이미지 생성 프롬프트 구성 - 설계 반영
 elif chat_option.startswith("3"):
