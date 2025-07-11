@@ -241,9 +241,8 @@ elif chat_option.startswith("2"):
         st.session_state.segmentation_completed = False
         st.rerun()
 
-
-# 3. 캐릭터/배경 이미지 생성 프롬프트 구성 - 설계 반영
-elif chat_option.startswith("3"):
+# --- 3. 캐릭터/배경 이미지 생성 프롬프트 구성 ---
+if chat_option.startswith("3"):
     st.header("3. 캐릭터/배경 이미지 생성")
     st.markdown("🎨 **목표:** 여러분의 이야기에 등장하는 캐릭터나 배경 이미지를 직접 만들어 볼 수 있어요.")
 
@@ -251,41 +250,47 @@ elif chat_option.startswith("3"):
         st.session_state.messages_image_generation = [
             {"role": "system", "content": (
                 GLOBAL_GPT_DIRECTIVES +
-                """너는 초등학생이 설명한 캐릭터 또는 배경을 이미지 생성에 적합한 프롬프트로 구체화하는 GPT 도우미야.
+                r"""너는 초등학생이 설명한 캐릭터 또는 배경을 이미지 생성에 적합한 프롬프트로 구체화하는 GPT 도우미야.
 학생에게 다음 요소를 모두 포함하도록 질문을 통해 유도해줘 (단, 이미 입력된 정보는 묻지 않고 누락된 정보만 질문):
-- **대상**: 캐릭터인지 배경인지 명확히 해줘. (예: '주인공', '마법의 숲')
+- **대상**: 캐릭터인지 배경인지 명확히 해줘.
+  - **캐릭터인 경우**: 항상 배경 없이 인물만, 전체 전신이 보이도록 생성하는 것이 기본이야. 이 점을 염두에 두고 캐릭터의 외형, 표정, 자세를 구체적으로 질문해줘. (예: '용감한 기사', '밝게 웃고 있는 뾰족한 귀를 가진 요정 소녀, 한 손을 흔들고 있는, 전체 전신샷, 배경 없음')
+  - **배경인 경우**: 어떤 풍경이나 분위기를 담고 싶은지 질문해줘. (예: '마법의 숲', '햇살이 비치는 울창한 숲 속, 아늑한 작은 나무 오두막')
 - **스타일**: 어떤 그림 스타일을 원하는지 물어봐줘. (예: '스누피 펜화', '디즈니 애니메이션 스타일', '수채화 느낌', '실사 같은', '미래적인')
-- **외형, 표정, 자세**: 구체적인 모습, 표정, 어떤 자세를 취하고 있는지 물어봐줘. (예: '밝게 웃고 있는', '한 손을 흔들고 있는', '초록색 머리카락의')
-- **전체 몸이 보이는지 여부**: 캐릭터의 경우, '캐릭터의 전체 몸이 다 보이도록 할까요?'라고 꼭 물어봐줘. (설계 반영: 캐릭터 생성 시 항상 전체 몸이 보이도록 설정)
-- **배경 포함 여부**: 캐릭터 이미지의 경우, '배경은 없이 인물만 있는 건가요?'라고 물어봐줘. 배경 이미지의 경우, '어떤 풍경이나 분위기를 담고 싶은가요?'라고 물어봐줘. (설계 반영: 배경은 분리 생성하거나 프롬프트로 생성)
+- **외형, 표정, 자세**: 구체적인 모습, 표정, 어떤 자세를 취하고 있는지 물어봐줘. (캐릭터인 경우 주로 해당)
 
 학생이 프롬프트 초안을 입력하면, 위 요소들을 바탕으로 부족한 부분을 단일 질문으로 추가 질문하여 정보를 채워나가줘.
-필요한 정보가 모두 수집되면, 완성된 프롬프트를 깔끔하게 정리하여 출력하고, 이 프롬프트로 이미지를 생성할 수 있음을 알려줘.
-**주의사항:** 학생에게 바로 이미지 프롬프트를 제공하지 않고, 질문을 통해 구체화해야 해. 캐릭터는 반드시 배경 없이, 전체 전신으로 생성되어야 함을 염두에 두고 질문을 이끌어내야 해. 질문은 자연스럽고 흐름에 맞게 진행해줘."""
+필요한 정보가 모두 수집되면, 완성된 프롬프트를 깔끔하게 정리하여 다음과 같은 형식으로 출력해줘: **완성된 프롬프트:** [여기에 완성된 이미지 프롬프트 텍스트]
+그리고 나서 이 프롬프트로 이미지를 생성할 수 있음을 학생에게 알려줘. 예를 들어, '이 프롬프트로 멋진 그림을 만들어볼까요?' 처럼 말이야.
+
+**주의사항:** 학생에게 바로 이미지 프롬프트를 제공하지 않고, 질문을 통해 구체화해야 해. 질문은 자연스럽고 흐름에 맞게 진행해줘."""
             )}
         ]
         st.session_state.image_prompt_collected = False
         st.session_state.generated_image_display = None
         st.session_state.image_input_submitted = False
-        st.session_state.final_dalle_prompt = ""
+        st.session_state.final_dalle_prompt = "" # 최종 DALL-E 프롬프트 저장용
 
+    # 캐릭터/배경 선택 라디오 버튼
     image_type = st.radio("어떤 이미지를 만들고 싶나요?", ["캐릭터 이미지", "배경 이미지"], key="image_type_radio")
-
+    
+    # 초기 프롬프트 입력창 (첫 제출 전까지 보임)
     if not st.session_state.image_input_submitted:
         initial_prompt = st.text_area(f"{image_type}에 대해 설명해주세요. (예: '용감한 기사', '신비로운 숲')", key="initial_image_prompt")
         if st.button("프롬프트 구체화 시작") and initial_prompt:
             st.session_state.messages_image_generation.append({"role": "user", "content": initial_prompt})
-            st.session_state.image_input_submitted = True
+            st.session_state.image_input_submitted = True # 사용자가 초기 프롬프트를 제출했음을 표시
             with st.spinner("GPT가 질문을 생성 중입니다..."):
                 gpt_response = ask_gpt(st.session_state.messages_image_generation)
                 st.session_state.messages_image_generation.append({"role": "assistant", "content": gpt_response})
-            st.rerun()
+            st.rerun() # 플래그 변경 후 페이지 새로고침
 
+    # 대화 기록 표시
     for message in st.session_state.messages_image_generation:
         if message["role"] != "system":
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
+    # 지속적인 채팅 입력창 (초기 프롬프트 제출 후 보임)
     if st.session_state.image_input_submitted:
         if current_prompt := st.chat_input("GPT의 질문에 답하거나 설명을 추가해주세요."):
             st.session_state.messages_image_generation.append({"role": "user", "content": current_prompt})
@@ -294,37 +299,47 @@ elif chat_option.startswith("3"):
                 st.session_state.messages_image_generation.append({"role": "assistant", "content": gpt_response})
             st.rerun()
 
-        # Check if the last GPT message seems to be a finalized prompt
+        # GPT의 마지막 메시지에서 '완성된 프롬프트:'를 찾아 추출
+        # (이 로직은 GPT가 정확히 "완성된 프롬프트: [프롬프트]" 형식으로 응답할 때 작동합니다.)
         if st.session_state.messages_image_generation and \
            st.session_state.messages_image_generation[-1]["role"] == "assistant" and \
            "완성된 프롬프트:" in st.session_state.messages_image_generation[-1]["content"] and \
-           not st.session_state.image_prompt_collected: # Only collect once
+           not st.session_state.image_prompt_collected: # 한 번만 수집
 
             gpt_final_prompt_content = st.session_state.messages_image_generation[-1]["content"]
             start_index = gpt_final_prompt_content.find("완성된 프롬프트:") + len("완성된 프롬프트:")
-            end_index = gpt_final_prompt_content.find("\n", start_index)
-            if end_index == -1:
+            end_index = gpt_final_prompt_content.find("\n", start_index) # 완성된 프롬프트 뒤에 개행 문자가 있다고 가정
+            
+            if end_index == -1: # 개행 문자가 없으면 문자열 끝까지
                 final_dalle_prompt = gpt_final_prompt_content[start_index:].strip()
             else:
                 final_dalle_prompt = gpt_final_prompt_content[start_index:end_index].strip()
-
+            
             st.session_state.image_prompt_collected = True
             st.session_state.final_dalle_prompt = final_dalle_prompt
             st.info(f"✨ GPT가 최종 이미지 프롬프트를 완성했어요: `{final_dalle_prompt}`")
 
+    # 최종 프롬프트가 수집되었을 때 이미지 생성 버튼 및 이미지 표시
     if st.session_state.get("image_prompt_collected", False):
         if st.button("이 프롬프트로 이미지 생성하기"):
-            if st.session_state.get("final_dalle_prompt"):
+            if st.session_state.get("final_dalle_prompt"): # 파싱된 최종 프롬프트가 있는지 확인
                 with st.spinner("이미지를 생성 중입니다... 잠시만 기다려주세요!"):
                     try:
-                        generated_img = generate_image(st.session_state.final_dalle_prompt)
+                        # 캐릭터 이미지인 경우, "배경 없음"을 DALL-E 프롬프트에 추가하여 강조
+                        if image_type == "캐릭터 이미지":
+                            dalle_final_prompt = st.session_state.final_dalle_prompt + ", no background, full body"
+                        else: # 배경 이미지인 경우
+                            dalle_final_prompt = st.session_state.final_dalle_prompt
+                            
+                        generated_img = generate_image(dalle_final_prompt)
                         st.session_state.generated_image_display = generated_img
                         st.success("이미지가 성공적으로 생성되었습니다!")
                     except Exception as e:
                         st.error(f"이미지 생성 중 오류가 발생했습니다: {e}. 프롬프트를 다시 확인하거나 잠시 후 다시 시도해주세요.")
             else:
                 st.warning("먼저 GPT로부터 완성된 이미지 프롬프트를 받아야 합니다.")
-
+        
+        # 생성된 이미지가 있으면 화면에 표시하고 다운로드 버튼 제공
         if st.session_state.generated_image_display:
             st.image(st.session_state.generated_image_display, caption=f"생성된 {image_type}", use_column_width=True)
             buf = io.BytesIO()
@@ -337,22 +352,24 @@ elif chat_option.startswith("3"):
                 mime="image/png"
             )
 
-
+    # 대화 초기화 버튼
     if st.button("이미지 생성 초기화", key="reset_image_generation_chat"):
         st.session_state.messages_image_generation = [
             {"role": "system", "content": (
                 GLOBAL_GPT_DIRECTIVES +
-                """너는 초등학생이 설명한 캐릭터 또는 배경을 이미지 생성에 적합한 프롬프트로 구체화하는 GPT 도우미야.
+                r"""너는 초등학생이 설명한 캐릭터 또는 배경을 이미지 생성에 적합한 프롬프트로 구체화하는 GPT 도우미야.
 학생에게 다음 요소를 모두 포함하도록 질문을 통해 유도해줘 (단, 이미 입력된 정보는 묻지 않고 누락된 정보만 질문):
-- **대상**: 캐릭터인지 배경인지 명확히 해줘. (예: '주인공', '마법의 숲')
+- **대상**: 캐릭터인지 배경인지 명확히 해줘.
+  - **캐릭터인 경우**: 항상 배경 없이 인물만, 전체 전신이 보이도록 생성하는 것이 기본이야. 이 점을 염두에 두고 캐릭터의 외형, 표정, 자세를 구체적으로 질문해줘. (예: '용감한 기사', '밝게 웃고 있는 뾰족한 귀를 가진 요정 소녀, 한 손을 흔들고 있는, 전체 전신샷, 배경 없음')
+  - **배경인 경우**: 어떤 풍경이나 분위기를 담고 싶은지 질문해줘. (예: '마법의 숲', '햇살이 비치는 울창한 숲 속, 아늑한 작은 나무 오두막')
 - **스타일**: 어떤 그림 스타일을 원하는지 물어봐줘. (예: '스누피 펜화', '디즈니 애니메이션 스타일', '수채화 느낌', '실사 같은', '미래적인')
-- **외형, 표정, 자세**: 구체적인 모습, 표정, 어떤 자세를 취하고 있는지 물어봐줘. (예: '밝게 웃고 있는', '한 손을 흔들고 있는', '초록색 머리카락의')
-- **전체 몸이 보이는지 여부**: 캐릭터의 경우, '전신이 다 보이는 모습인가요?'라고 꼭 물어봐줘.
-- **배경 포함 여부**: 캐릭터 이미지의 경우, '배경은 없이 인물만 있는 건가요?'라고 물어봐줘. 배경 이미지의 경우, '어떤 풍경이나 분위기를 담고 싶은가요?'라고 물어봐줘.
+- **외형, 표정, 자세**: 구체적인 모습, 표정, 어떤 자세를 취하고 있는지 물어봐줘. (캐릭터인 경우 주로 해당)
 
 학생이 프롬프트 초안을 입력하면, 위 요소들을 바탕으로 부족한 부분을 단일 질문으로 추가 질문하여 정보를 채워나가줘.
-필요한 정보가 모두 수집되면, 완성된 프롬프트를 깔끔하게 정리하여 출력하고, 이 프롬프트로 이미지를 생성할 수 있음을 알려줘.
-**주의사항:** 학생에게 바로 이미지 프롬프트를 제공하지 않고, 질문을 통해 구체화해야 해. 캐릭터는 반드시 배경 없이, 전체 전신으로 생성되어야 함을 염두에 두고 질문을 이끌어내야 해. 질문은 자연스럽고 흐름에 맞게 진행해줘."""
+필요한 정보가 모두 수집되면, 완성된 프롬프트를 깔끔하게 정리하여 다음과 같은 형식으로 출력해줘: **완성된 프롬프트:** [여기에 완성된 이미지 프롬프트 텍스트]
+그리고 나서 이 프롬프트로 이미지를 생성할 수 있음을 학생에게 알려줘. 예를 들어, '이 프롬프트로 멋진 그림을 만들어볼까요?' 처럼 말이야.
+
+**주의사항:** 학생에게 바로 이미지 프롬프트를 제공하지 않고, 질문을 통해 구체화해야 해. 질문은 자연스럽고 흐름에 맞게 진행해줘."""
             )}
         ]
         st.session_state.image_prompt_collected = False
