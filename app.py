@@ -1,8 +1,9 @@
 import streamlit as st
-from openai import OpenAI
+from openai import OpenAI, APIError, RateLimitError, APIConnectionError, APITimeoutError
 from PIL import Image
 import base64
 import io
+import time
 
 # OpenAI API 키 설정 (Streamlit Secrets에서 가져옴)
 client = OpenAI(api_key=st.secrets["openai"]["api_key"])
@@ -27,7 +28,6 @@ def ask_gpt(messages, model="gpt-4o"):
     )
     return response.choices[0].message.content
 
-# 이미지 생성 함수 (DALL·E 사용) - 오류 처리 강화
 def generate_image(prompt):
     try:
         response = client.images.generate(
@@ -39,24 +39,26 @@ def generate_image(prompt):
         image_data = base64.b64decode(response.data[0].b64_json)
         return Image.open(io.BytesIO(image_data))
     except RateLimitError:
-        # 속도 제한 오류 시 명확한 메시지
-        st.error("앗! 지금 너무 많은 이미지 요청이 있었어요. 잠시 후 다시 시도해 주세요. (속도 제한 초과)")
+        st.error("잠시만요! 너무 많은 이미지 요청이 있었어요. 😥 1분 후에 다시 시도해 주세요.")
+        
+        # 버튼을 잠시 비활성화하고 사용자에게 대기 시간을 안내합니다.
+        # 이 상태를 Streamlit session state에 저장하여 새로고침 시에도 유지되도록 합니다.
+        st.session_state.image_generation_disabled = True
+        st.session_state.image_generation_disable_until = time.time() + 60 # 60초(1분) 동안 비활성화
+        
+        # print(f"[RateLimitError] 발생 시간: {time.ctime()}") # 디버깅용 로그
         return None
     except APIError as e:
-        # API 오류 시 OpenAI가 제공하는 상세 메시지 표시
         error_message = e.response.json().get('error', {}).get('message', '알 수 없는 오류')
         st.error(f"이미지 생성 중 OpenAI API 오류가 발생했습니다: ({e.status_code}) {error_message}")
         return None
     except APIConnectionError as e:
-        # 네트워크 연결 오류 시 명확한 메시지
         st.error(f"인터넷 연결 문제로 이미지 생성에 실패했어요. 네트워크 상태를 확인해 주세요. 오류: {e}")
         return None
     except APITimeoutError:
-        # 타임아웃 오류 시 명확한 메시지
         st.error("이미지 생성 요청이 너무 오래 걸려 취소되었어요. 다시 시도해 주세요.")
         return None
     except Exception as e:
-        # 그 외 예상치 못한 일반 오류
         st.error(f"예상치 못한 오류가 발생했습니다: {e}. 잠시 후 다시 시도해 주세요.")
         return None
 
@@ -248,12 +250,12 @@ elif chat_option.startswith("2"):
     # '이야기 나누기'에서는 추가적인 사용자 채팅 입력이 필요 없으므로 이 부분을 제거합니다.
     # 대신, GPT가 한 번에 장면 분할을 완료하도록 유도합니다.
     # if not st.session_state.segmentation_completed:
-    #     if prompt := st.chat_input("장면 구분에 대해 이야기하거나 수정하고 싶은 부분을 알려주세요."):
-    #         st.session_state.messages_segmentation.append({"role": "user", "content": prompt})
-    #         with st.spinner("GPT가 답변을 생성 중입니다..."):
-    #             gpt_response = ask_gpt(st.session_state.messages_segmentation)
-    #             st.session_state.messages_segmentation.append({"role": "assistant", "content": gpt_response})
-    #         st.rerun()
+    #      if prompt := st.chat_input("장면 구분에 대해 이야기하거나 수정하고 싶은 부분을 알려주세요."):
+    #           st.session_state.messages_segmentation.append({"role": "user", "content": prompt})
+    #           with st.spinner("GPT가 답변을 생성 중입니다..."):
+    #                gpt_response = ask_gpt(st.session_state.messages_segmentation)
+    #                st.session_state.messages_segmentation.append({"role": "assistant", "content": gpt_response})
+    #                st.rerun()
 
     if st.button("장면 나누기 초기화", key="reset_segmentation_chat"):
         st.session_state.messages_segmentation = [
@@ -331,6 +333,8 @@ Pika 영상 제작의 연속성을 위해 캐릭터 이미지는 '배경 없는 
         st.session_state.generated_image_display = None
         st.session_state.image_input_submitted = False
         st.session_state.final_dalle_prompt = "" # 최종 DALL-E 프롬프트 저장용
+        st.session_state.image_generation_disabled = False 
+        st.session_state.image_generation_disable_until = 0 
 
     # 캐릭터/배경 선택 라디오 버튼
     image_type = st.radio("어떤 이미지를 만들고 싶나요?", ["캐릭터 이미지", "배경 이미지"], key="image_type_radio")
@@ -340,11 +344,11 @@ Pika 영상 제작의 연속성을 위해 캐릭터 이미지는 '배경 없는 
         initial_prompt = st.text_area(f"{image_type}에 대해 설명해주세요. (예: '용감한 기사', '신비로운 숲')", key="initial_image_prompt")
         if st.button("프롬프트 구체화 시작") and initial_prompt:
             st.session_state.messages_image_generation.append({"role": "user", "content": initial_prompt})
-            st.session_state.image_input_submitted = True # 사용자가 초기 프롬프트를 제출했음을 표시
+            st.session_state.image_input_submitted = True # 스토리 제출 시 이 플래그를 True로 설정
             with st.spinner("GPT가 질문을 생성 중입니다..."):
                 gpt_response = ask_gpt(st.session_state.messages_image_generation)
                 st.session_state.messages_image_generation.append({"role": "assistant", "content": gpt_response})
-            st.rerun() # 플래그 변경 후 페이지 새로고침
+            st.rerun() # 플래그 변경 후 페이지를 새로고침하여 채팅 UI를 표시
         if not st.session_state.image_input_submitted and initial_prompt:
              st.info("⬆️ '프롬프트 구체화 시작' 버튼을 눌러 GPT와 대화를 시작하세요!")
 
@@ -398,20 +402,34 @@ Pika 영상 제작의 연속성을 위해 캐릭터 이미지는 '배경 없는 
                 st.session_state.final_dalle_prompt = ""
 
     # 최종 프롬프트가 수집되었을 때 이미지 생성 버튼 및 이미지 표시
+    # --- 여기서부터 정렬 수정 ---
     if st.session_state.get("image_prompt_collected", False):
-        if st.button("이 프롬프트로 이미지 생성하기"):
-            if st.session_state.get("final_dalle_prompt"): # 파싱된 최종 프롬프트가 있는지 확인
-                with st.spinner("이미지를 생성 중입니다... 잠시만 기다려주세요!"):
-                    # generate_image 함수에서 오류 처리 및 None 반환을 직접 하므로,
-                    # 여기서는 반환 값을 확인하여 이미지 표시 여부만 결정합니다.
-                    # GPT가 'no background'를 이미 포함했으므로 여기서 추가하지 않습니다.
-                    generated_img = generate_image(st.session_state.final_dalle_prompt) 
-                    if generated_img: # 이미지가 성공적으로 반환된 경우에만 세션 상태 업데이트
-                        st.session_state.generated_image_display = generated_img
-                        st.success("이미지가 성공적으로 생성되었습니다!")
-                    # 오류 메시지는 generate_image 함수 내에서 이미 표시됨
+        # 버튼 활성화 여부 확인
+        is_button_disabled = st.session_state.get("image_generation_disabled", False)
+        if is_button_disabled:
+            # 비활성화 시간 확인
+            remaining_time = int(st.session_state.get("image_generation_disable_until", 0) - time.time())
+            if remaining_time > 0:
+                st.warning(f"⏰ 이미지 생성은 {remaining_time}초 후에 다시 가능합니다. 잠시 기다려주세요.")
+                # 버튼을 비활성화 상태로 렌더링
+                st.button("이미지 생성 중 (잠시 기다려주세요)", disabled=True) 
             else:
-                st.warning("먼저 GPT로부터 완성된 이미지 프롬프트를 받아야 합니다.")
+                # 시간 만료, 버튼 다시 활성화
+                st.session_state.image_generation_disabled = False
+                is_button_disabled = False # 버튼 상태 업데이트
+
+        # 버튼이 활성화된 경우에만 클릭 가능하도록
+        if not is_button_disabled:
+            if st.button("이 프롬프트로 이미지 생성하기"):
+                if st.session_state.get("final_dalle_prompt"):
+                    with st.spinner("이미지를 생성 중입니다... 잠시만 기다려주세요!"):
+                        generated_img = generate_image(st.session_state.final_dalle_prompt) 
+                        if generated_img:
+                            st.session_state.generated_image_display = generated_img
+                            st.success("이미지가 성공적으로 생성되었습니다!")
+                        # 오류 메시지는 generate_image 함수 내에서 이미 표시됨
+                else:
+                    st.warning("먼저 GPT로부터 완성된 이미지 프롬프트를 받아야 합니다.")
         
         # 생성된 이미지가 있으면 화면에 표시하고 다운로드 버튼 제공
         if st.session_state.generated_image_display:
@@ -427,14 +445,17 @@ Pika 영상 제작의 연속성을 위해 캐릭터 이미지는 '배경 없는 
             )
 
     # 대화 초기화 버튼
+    # --- 여기서부터 정렬 수정 ---
     if st.button("이미지 생성 초기화", key="reset_image_generation_chat"):
         st.session_state.messages_image_generation = [
-            {"role": "system", "content": IMAGE_GENERATION_SYSTEM_PROMPT} # 초기화 시 시스템 프롬프트 다시 로드
+            {"role": "system", "content": IMAGE_GENERATION_SYSTEM_PROMPT} 
         ]
         st.session_state.image_prompt_collected = False
         st.session_state.generated_image_display = None
         st.session_state.image_input_submitted = False
         st.session_state.final_dalle_prompt = ""
+        st.session_state.image_generation_disabled = False 
+        st.session_state.image_generation_disable_until = 0 
         st.rerun()
 # 4. 장면별 영상 Prompt 점검 - 설계 반영
 elif chat_option.startswith("4"):
@@ -508,7 +529,7 @@ Pika AI가 더 잘 이해하고 멋진 영상을 만들 수 있도록 프롬프�
                 GLOBAL_GPT_DIRECTIVES +
                 """너는 초등학생이 Pika 영상 제작을 위한 효과적인 장면별 프롬프트를 만드는 것을 돕는 GPT 도우미야.
 학생이 작성한 장면 설명을 기반으로, **10초 이내의 영상으로 구성 가능한 장면인지 확인**해줘.
-Pika AI가 더 잘 이해하고 멋진 영상을 만들 수 있도록 프롬프트를 구체적이고 생생하게 개선해줘.
+Pika AI가 더 잘 이해하고 멋진 영상을 만들 수 있도록 프rompt를 구체적이고 생생하게 개선해줘.
 다음 요소를 중심으로 질문하여 (단, 누락된 경우에만) 구체화하도록 유도해줘:
 - **동작**: 인물이나 사물이 어떤 움직임을 보이는지? (예: '뛰어간다', '천천히 춤춘다')
 - **감정**: 인물의 표정이나 장면의 분위기는 어떤지? (예: '슬픈 표정의', '희망찬 분위기의')
@@ -524,7 +545,3 @@ Pika AI가 더 잘 이해하고 멋진 영상을 만들 수 있도록 프롬프�
 
 학생이 '완료' 또는 '충분하다'고 하면, 최종 프롬프트를 확정하고 '이제 이 프롬프트로 멋진 영상을 만들 수 있을 거예요!'라고 격려해줘."""
             )}
-        ]
-        st.session_state.current_scene_prompt = ""
-        st.session_state.video_prompt_finalized = False
-        st.rerun()
