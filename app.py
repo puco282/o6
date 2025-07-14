@@ -464,11 +464,10 @@ elif chat_option.startswith("4"):
 
     st.warning("이 기능은 '2. 이야기 나누기'에서 장면 구분이 완료된 후에 사용하는 것이 좋습니다.")
 
-    if "messages_video_prompt" not in st.session_state:
-        st.session_state.messages_video_prompt = [
-            {"role": "system", "content": (
-                GLOBAL_GPT_DIRECTIVES +
-                """너는 초등학생이 작성한 장면 설명을 기반으로, **10초 이내의 영상으로 구성 가능한 장면인지 확인**해줘.
+    # '장면별 영상 Prompt 점검'의 시스템 프롬프트 정의
+    VIDEO_PROMPT_REVIEW_SYSTEM_PROMPT = ( # 변수명 통일성을 위해 추가
+        GLOBAL_GPT_DIRECTIVES +
+        """너는 초등학생이 작성한 장면 설명을 기반으로, **10초 이내의 영상으로 구성 가능한 장면인지 확인**해줘.
 Pika AI가 더 잘 이해하고 멋진 영상을 만들 수 있도록 프롬프트를 구체적이고 생생하게 개선해줘.
 다음 요소를 중심으로 질문하여 (단, 누락된 경우에만) 구체화하도록 유도해줘:
 - **동작**: 인물이나 사물이 어떤 움직임을 보이는지? (예: '뛰어간다', '천천히 춤춘다')
@@ -484,7 +483,12 @@ Pika AI가 더 잘 이해하고 멋진 영상을 만들 수 있도록 프롬프�
 - 최종적으로 정제된 프롬프트만 출력하고, 불필요한 질문 반복은 금지해.
 
 학생이 '완료' 또는 '충분하다'고 하면, 최종 프롬프트를 확정하고 '이제 이 프롬프트로 멋진 영상을 만들 수 있을 거예요!'라고 격려해줘."""
-            )}
+    )
+
+    if "messages_video_prompt" not in st.session_state or \
+       st.session_state.messages_video_prompt[0]["content"] != VIDEO_PROMPT_REVIEW_SYSTEM_PROMPT: # 시스템 프롬프트 변경
+        st.session_state.messages_video_prompt = [
+            {"role": "system", "content": VIDEO_PROMPT_REVIEW_SYSTEM_PROMPT}
         ]
         st.session_state.current_scene_prompt = ""
         st.session_state.video_prompt_finalized = False
@@ -525,23 +529,8 @@ Pika AI가 더 잘 이해하고 멋진 영상을 만들 수 있도록 프롬프�
 
     if st.button("프롬프트 점검 초기화", key="reset_video_prompt_chat"):
         st.session_state.messages_video_prompt = [
-            {"role": "system", "content": (
-                GLOBAL_GPT_DIRECTIVES +
-                """너는 초등학생이 Pika 영상 제작을 위한 효과적인 장면별 프롬프트를 만드는 것을 돕는 GPT 도우미야.
-학생이 작성한 장면 설명을 기반으로, **10초 이내의 영상으로 구성 가능한 장면인지 확인**해줘.
-Pika AI가 더 잘 이해하고 멋진 영상을 만들 수 있도록 프rompt를 구체적이고 생생하게 개선해줘.
-다음 요소를 중심으로 질문하여 (단, 누락된 경우에만) 구체화하도록 유도해줘:
-- **동작**: 인물이나 사물이 어떤 움직임을 보이는지? (예: '뛰어간다', '천천히 춤춘다')
-- **감정**: 인물의 표정이나 장면의 분위기는 어떤지? (예: '슬픈 표정의', '희망찬 분위기의')
-- **구도**: 카메라가 인물을 어떻게 잡을지? (예: '전체 몸', '상반신', '로우 앵글 샷')
-- **강조하고 싶은 요소**: 이 장면에 특별히 강조하고 싶은 것이 있다면 무엇인지? (예: '반짝이는 마법 효과', '아름다운 노을')
-
-학생이 프롬프트 초안을 입력하면, 위 요소들을 바탕으로 부족한 부분을 단일 질문으로 추가 질문하여 정보를 채워나가줘.
-구체화가 완료되면, **간결한 1~2문장 형태**로 최종 프롬프트를 정리하여 출력해줘.
-**주의사항:**
-- 문장이 너무 길거나 과도한 서술은 지양해야 해. (Pika의 프롬프트 해석 특성상, 장면 설명은 짧고 명확하게 구성해야 하며, 과도한 문장 길이나 묘사는 피함.)
-- 캐릭터나 배경의 외형 묘사는 이 창에서 다루지 않아. 이는 '캐릭터/배경 이미지 생성'에서 이미 결정된 부분이야.
-- 최종적으로 정제된 프롬프트만 출력하고, 불필요한 질문 반복은 금지해.
-
-학생이 '완료' 또는 '충분하다'고 하면, 최종 프롬프트를 확정하고 '이제 이 프롬프트로 멋진 영상을 만들 수 있을 거예요!'라고 격려해줘."""
-            )}
+            {"role": "system", "content": VIDEO_PROMPT_REVIEW_SYSTEM_PROMPT} # 초기화 시 시스템 프롬프트 다시 로드
+        ]
+        st.session_state.current_scene_prompt = ""
+        st.session_state.video_prompt_finalized = False
+        st.rerun()
