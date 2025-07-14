@@ -274,9 +274,8 @@ elif chat_option.startswith("3"):
     # 3번 섹션을 위한 GPT 시스템 프롬프트 (최신 논의 반영)
     IMAGE_GENERATION_SYSTEM_PROMPT = (
         GLOBAL_GPT_DIRECTIVES +
-        r"""너는 초등학생이 설명한 캐릭터 또는 배경을 이미지 생성에 적합한 프롬프트로 구체화하는 GPT 도우미야.
+      r"""너는 초등학생이 설명한 캐릭터 또는 배경을 이미지 생성에 적합한 프롬프트로 구체화하는 GPT 도우미야.
 학생의 창의성을 존중하고, 칭찬과 격려의 말투를 꼭 유지해줘.
-Pika 영상 제작의 연속성을 위해 캐릭터 이미지는 '배경 없는 전신 인물'을 기본으로 만들 거야.
 
 **[GPT 역할 및 대화 방식]**
 - 학생이 제공한 정보가 아래 항목 중 누락되었거나 불분명하면, **해당 항목에 대한 질문과 함께 적절한 예시를 하나씩 제시**하여 학생이 스스로 더 나은 표현을 찾도록 유도해줘.
@@ -307,17 +306,23 @@ Pika 영상 제작의 연속성을 위해 캐릭터 이미지는 '배경 없는 
 7.  **스타일/화풍**: "이 그림이 어떤 스타일로 보이면 좋겠어? 만화 같을까, 그림책 같을까?"
     * **예시:** '디즈니 애니메이션 스타일', '픽사 3D 애니메이션 스타일', '디지털 수채화 느낌', '스누피 펜화 스타일'
 
+8.  **특별한 자세 (선택 사항)**: "캐릭터가 특별히 취하고 싶은 자세가 있어? (예를 들어 '점프하는', '팔짱을 낀', '달리는' 등) 만약 없으면, **정면을 보고 서 있는 중립적인 자세**로 만들어 줄게!"
+    * **예시:** '두 팔 벌려 점프하는', '한 손으로 턱을 괸 채 생각하는', '힘차게 달리는'
+
 **[캐릭터 이미지 생성 규칙 (GPT가 자동으로 적용)]**
-- 학생이 특정 자세를 언급하지 않았다면, **정면을 보고 서 있는 중립적인 자세(standing facing front, neutral pose)를 프롬프트에 자동으로 포함**하여 가장 활용하기 좋게 만들어줘. (단, 동물이나 물건 캐릭터의 경우, '서 있는' 대신 '자연스럽게 놓여 있는' 등 해당 대상에게 적합한 중립적인 상태를 반영해줘.)
+- 학생이 특별한 자세를 언급하지 않았다면, **정면을 보고 서 있는 중립적인 자세(standing facing front, neutral pose)를 프롬프트에 자동으로 포함**하여 가장 활용하기 좋게 만들어줘. (단, 동물이나 물건 캐릭터의 경우, '서 있는' 대신 '자연스럽게 놓여 있는' 등 해당 대상에게 적합한 중립적인 상태를 반영해줘.)
 - 학생이 어떤 자세를 언급했든 관계없이, **배경은 없도록(no background)** 프롬프트에 포함해줘.
 - 캐릭터 이미지는 항상 **전신이 보이도록(full body)** 생성해야 해.
 
 **[프롬프트 완성 및 전달]**
-모든 필요한 정보가 수집되면, **어떤 추가 설명도 없이, 오직 하나의 완성된 프롬프트만을 깔끔하게 정리하여 다음과 같은 형식으로 출력해줘:**
-**완성된 프롬프트:** [여기에 완성된 이미지 프롬프트 텍스트]
+모든 필요한 정보가 수집되면, **DALL-E 모델에 전달할 영어 프롬프트와 함께, 그것의 자연스러운 한국어 번역본을 다음 형식으로 출력해줘. 다른 불필요한 설명은 일절 추가하지 마.**
+
+**DALL-E 프롬프트 (영어):** [여기에 영어 프롬프트 텍스트]
+**한국어 번역:** [여기에 한국어 번역 텍스트]
 
 **예시:**
-**완성된 프롬프트:** A 10-year-old girl, female, with short brown hair and bright blue eyes, wearing a pink dress and holding a small teddy bear, brightly smiling expression, Disney animation style, standing facing front, no background, full body.
+**DALL-E 프롬프트 (영어):** A 10-year-old girl, female, with short brown hair and bright blue eyes, wearing a pink dress and holding a small teddy bear, brightly smiling expression, Disney animation style, standing facing front, no background, full body.
+**한국어 번역:** 10살 여자아이, 짧은 갈색 머리와 파란 눈을 가졌고, 분홍색 원피스를 입고 작은 곰인형을 들고 있는 모습. 밝게 웃는 표정. 디즈니 애니메이션 스타일. 정면을 보고 서 있는 전신 이미지. 배경 없음.
 
 **주의사항:** 학생에게 바로 이미지 프롬프트를 제공하지 않고, 질문을 통해 구체화해야 해. 질문은 자연스럽고 흐름에 맞게 진행해줘."""
     )
@@ -368,38 +373,51 @@ Pika 영상 제작의 연속성을 위해 캐릭터 이미지는 '배경 없는 
                 st.session_state.messages_image_generation.append({"role": "assistant", "content": gpt_response})
             st.rerun()
 
-        # GPT의 마지막 메시지에서 '완성된 프롬프트:'를 찾아 추출 (파싱 로직 개선)
+         # GPT의 마지막 메시지에서 '완성된 프롬프트:'를 찾아 추출 (파싱 로직 개선)
         if st.session_state.messages_image_generation and \
            st.session_state.messages_image_generation[-1]["role"] == "assistant" and \
-           "완성된 프롬프트:" in st.session_state.messages_image_generation[-1]["content"] and \
+           "DALL-E 프롬프트 (영어):" in st.session_state.messages_image_generation[-1]["content"] and \
+           "한국어 번역:" in st.session_state.messages_image_generation[-1]["content"] and \
            not st.session_state.messages_image_generation[-1]["content"].strip().endswith("?") and \
            not st.session_state.image_prompt_collected: # '?'로 끝나는 질문이 아닐 때만 프롬프트로 인식
             
             gpt_final_prompt_content = st.session_state.messages_image_generation[-1]["content"]
             
             try:
-                # "완성된 프롬프트:" 부분을 찾고 그 이후의 텍스트를 가져옵니다.
-                start_index = gpt_final_prompt_content.find("완성된 프롬프트:")
-                if start_index != -1:
-                    actual_prompt_start = start_index + len("완성된 프롬프트:")
-                    final_dalle_prompt = gpt_final_prompt_content[actual_prompt_start:].strip()
+                # 영어 프롬프트 추출
+                start_english_index = gpt_final_prompt_content.find("DALL-E 프롬프트 (영어):")
+                if start_english_index != -1:
+                    english_prompt_start = start_english_index + len("DALL-E 프롬프트 (영어):")
+                    # '한국어 번역:' 시작 전까지의 내용을 영어 프롬프트로 간주
+                    end_english_index = gpt_final_prompt_content.find("한국어 번역:", english_prompt_start)
+                    if end_english_index == -1: # 한국어 번역이 없을 경우, 끝까지
+                        final_dalle_prompt = gpt_final_prompt_content[english_prompt_start:].strip()
+                    else:
+                        final_dalle_prompt = gpt_final_prompt_content[english_prompt_start:end_english_index].strip()
                     
-                    # 혹시 프롬프트 뒤에 GPT의 추가적인 설명이 붙을 경우,
-                    # 첫 줄바꿈까지만 가져오거나 특정 패턴으로 자르는 것을 고려할 수 있습니다.
-                    first_line_end = final_dalle_prompt.find('\n')
-                    if first_line_end != -1:
-                        final_dalle_prompt = final_dalle_prompt[:first_line_end].strip()
+                    # 한국어 번역 추출
+                    start_korean_index = gpt_final_prompt_content.find("한국어 번역:")
+                    if start_korean_index != -1:
+                        korean_translation_start = start_korean_index + len("한국어 번역:")
+                        korean_dalle_prompt = gpt_final_prompt_content[korean_translation_start:].strip()
+                    else:
+                        korean_dalle_prompt = "번역을 가져올 수 없습니다." # 번역이 없을 경우
 
                     st.session_state.image_prompt_collected = True
-                    st.session_state.final_dalle_prompt = final_dalle_prompt
-                    st.info(f"✨ GPT가 최종 이미지 프롬프트를 완성했어요: `{final_dalle_prompt}`")
+                    st.session_state.final_dalle_prompt = final_dalle_prompt # DALL-E 모델에 전달할 영어 프롬프트
+                    st.session_state.korean_dalle_prompt_display = korean_dalle_prompt # 사용자에게 보여줄 한국어 번역
+
+                    st.info(f"✨ GPT가 최종 이미지 프롬프트를 완성했어요 (DALL-E용): `{final_dalle_prompt}`")
+                    st.success(f"💡 **[한국어 번역]** : {korean_dalle_prompt}")
                 else:
                     st.session_state.image_prompt_collected = False # 아직 프롬프트 완성 안 됨
                     st.session_state.final_dalle_prompt = ""
+                    st.session_state.korean_dalle_prompt_display = ""
             except Exception as e:
                 st.error(f"프롬프트 파싱 중 오류가 발생했습니다: {e}. GPT 응답 형식을 확인해주세요.")
                 st.session_state.image_prompt_collected = False
                 st.session_state.final_dalle_prompt = ""
+                st.session_state.korean_dalle_prompt_display = ""
 
     # 최종 프롬프트가 수집되었을 때 이미지 생성 버튼 및 이미지 표시
     # --- 여기서부터 정렬 수정 ---
