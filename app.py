@@ -310,9 +310,9 @@ elif chat_option.startswith("3"):
     * **예시:** '두 팔 벌려 점프하는', '한 손으로 턱을 괸 채 생각하는', '힘차게 달리는'
 
 **[캐릭터 이미지 생성 규칙 (GPT가 자동으로 적용)]**
-- 학생이 특별한 자세를 언급하지 않았다면, **정면을 보고 서 있는 중립적인 자세(standing facing front, neutral pose)를 프롬프트에 자동으로 포함**하여 가장 활용하기 좋게 만들어줘. (단, 동물이나 물건 캐릭터의 경우, '서 있는' 대신 '자연스럽게 놓여 있는' 등 해당 대상에게 적합한 중립적인 상태를 반영해줘.)
+- 무조건 정면을 보고 서 있는 중립적인 자세(standing facing front, neutral pose)를 프롬프트에 자동으로 포함**하여 가장 활용하기 좋게 만들어줘. (단, 동물이나 물건 캐릭터의 경우, '서 있는' 대신 '자연스럽게 놓여 있는' 등 해당 대상에게 적합한 중립적인 상태를 반영해줘.)
 - 학생이 어떤 자세를 언급했든 관계없이, **배경은 없도록(no background)** 프롬프트에 포함해줘.
-- 캐릭터 이미지는 항상 **전신이 보이도록(full body)** 생성해야 해.
+- 캐릭터 이미지는 항상 **전신이 보이도록(full body)** 생성해야 해. **머리 끝에서 발끝까지 전신이 보이도록**
 
 **[프롬프트 완성 및 전달]**
 모든 필요한 정보가 수집되면, **DALL-E 모델에 전달할 영어 프롬프트와 함께, 그것의 자연스러운 한국어 번역본을 다음 형식으로 출력해줘. 다른 불필요한 설명은 일절 추가하지 마.**
@@ -451,7 +451,7 @@ elif chat_option.startswith("3"):
         
         # 생성된 이미지가 있으면 화면에 표시하고 다운로드 버튼 제공
         if st.session_state.generated_image_display:
-            st.image(st.session_state.generated_image_display, caption=f"생성된 {image_type}", use_column_width=True)
+            st.image(st.session_state.generated_image_display, caption=f"생성된 {image_type} (프롬프트: {st.session_state.korean_dalle_prompt_display})", use_container_width=True)
             buf = io.BytesIO()
             st.session_state.generated_image_display.save(buf, format="PNG")
             byte_im = buf.getvalue()
