@@ -1,15 +1,154 @@
 import streamlit as st
-from openai import OpenAI, APIError, RateLimitError, APIConnectionError, APITimeoutError
-from PIL import Image
+from streamlit_gsheets import GSheetsConnection
+import pandas as pd
+import datetime
+import time
+import random
 import base64
 import io
-import time
+from PIL import Image
+from openai import OpenAI, APIError, RateLimitError, APIConnectionError, APITimeoutError
 
-# OpenAI API 키 설정 (Streamlit Secrets에서 가져옴)
-client = OpenAI(api_key=st.secrets["openai"]["api_key"])
+# --- [1] 기본 설정 ---
+st.set_page_config(page_title="Pika 영상 제작 GPT 도우미", layout="wide")
 
+# --- [2] 구글 시트 연결 (Secrets 필수) ---
+try:
+    conn = st.connection("gsheets", type=GSheetsConnection)
+except Exception as e:
+    st.error(f"구글 시트 연결 오류: {e}. Secrets 설정을 확인해주세요.")
 
-st.set_page_config(page_title="Pika 영상 제작 GPT 도우미")
+# --- [3] 로그인 시스템 (Gatekeeper) ---
+if "student_name" not in st.session_state:
+    st.session_state["student_name"] = ""
+
+if not st.session_state["student_name"]:
+    st.title("🎬 Pika 영상 제작 수업에 오신 것을 환영합니다!")
+    st.info("선생님이 안내한 학번과 이름을 정확히 입력해주세요.")
+    
+    with st.form("login_form"):
+        name_input = st.text_input("학번 이름 (예: 5학년1반 김철수)")
+        submitted = st.form_submit_button("수업 입장하기")
+        
+        if submitted and name_input:
+            st.session_state["student_name"] = name_input
+            st.rerun()
+        elif submitted and not name_input:
+            st.error("이름을 입력해야 입장할 수 있어요!")
+    
+    st.stop() # 로그인 안 하면 여기서 멈춤
+
+# =========================================================
+# ⚙️ 시스템 함수 정의 (랜덤 키 + 로깅 + 텔레메트리)
+# =========================================================
+
+def get_random_client():
+    """Secrets의 openai_keys에서 랜덤으로 키를 하나 뽑아 클라이언트 생성"""
+    try:
+        # secrets.toml에 [openai_keys] 섹션이 있어야 함
+        api_keys = list(st.secrets["openai_keys"].values())
+        selected_key = random.choice(api_keys)
+        return OpenAI(api_key=selected_key)
+    except Exception as e:
+        st.error(f"API 키 로드 실패: {e}. Secrets에 [openai_keys]가 설정되었는지 확인하세요.")
+        st.stop()
+
+def save_log_to_sheet(action_type, question, answer, latency, status, tokens=0):
+    """구글 시트에 활동 로그 저장 (백엔드)"""
+    try:
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        new_row = pd.DataFrame([{
+            "timestamp": current_time,
+            "student_name": st.session_state["student_name"],
+            "user_question": f"[{action_type}] {question}",
+            "ai_answer": str(answer)[:1000], # 너무 길면 자름
+            "latency": latency,
+            "status": status,
+            "tokens": tokens
+        }])
+        
+        # Sheet1에 이어쓰기
+        existing_data = conn.read(worksheet="Sheet1", usecols=list(range(7)), ttl=5)
+        updated_data = pd.concat([existing_data, new_row], ignore_index=True)
+        conn.update(worksheet="Sheet1", data=updated_data)
+    except Exception as e:
+        print(f"로그 저장 실패 (학생에게는 안 보임): {e}")
+
+# --- [핵심] 선생님의 ask_gpt 함수 업그레이드 (로깅 추가) ---
+def ask_gpt(messages, model="gpt-4o"):
+    client = get_random_client() # 랜덤 키 사용
+    start_time = time.time()
+    
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages
+        )
+        content = response.choices[0].message.content
+        
+        # 데이터 수집
+        end_time = time.time()
+        latency = round(end_time - start_time, 2)
+        tokens = response.usage.total_tokens
+        
+        # 로그 저장 (마지막 사용자 질문 추출)
+        last_user_msg = next((m['content'] for m in reversed(messages) if m['role'] == 'user'), "System Prompt")
+        save_log_to_sheet("대화", last_user_msg, content, latency, "SUCCESS", tokens)
+        
+        return content
+
+    except Exception as e:
+        save_log_to_sheet("대화에러", str(messages), str(e), 0, "ERROR")
+        st.error(f"오류가 발생했습니다: {e}")
+        return "미안해, 잠시 문제가 생겼어. 다시 시도해줄래?"
+
+# --- [핵심] 선생님의 generate_image 함수 업그레이드 (로깅 추가) ---
+def generate_image(prompt):
+    client = get_random_client() # 랜덤 키 사용
+    start_time = time.time()
+    
+    try:
+        response = client.images.generate(
+            model="dall-e-3",
+            prompt=prompt,
+            size="1024x1024",
+            response_format="b64_json"
+        )
+        
+        end_time = time.time()
+        latency = round(end_time - start_time, 2)
+        save_log_to_sheet("이미지생성", prompt, "이미지 생성 성공", latency, "SUCCESS")
+        
+        image_data = base64.b64decode(response.data[0].b64_json)
+        return Image.open(io.BytesIO(image_data))
+
+    except Exception as e:
+        save_log_to_sheet("이미지에러", prompt, str(e), 0, "ERROR")
+        
+        if isinstance(e, RateLimitError):
+            st.error("잠시만요! 너무 많은 이미지 요청이 있었어요. 1분 후에 다시 시도해 주세요.")
+            st.session_state.image_generation_disabled = True
+            st.session_state.image_generation_disable_until = time.time() + 60
+        elif isinstance(e, APIConnectionError):
+            st.error("인터넷 연결 문제로 이미지 생성에 실패했어요.")
+        elif isinstance(e, APITimeoutError):
+            st.error("이미지 생성 요청이 너무 오래 걸려 취소되었어요.")
+        else:
+            st.error(f"예상치 못한 오류가 발생했습니다: {e}")
+        return None
+
+# =========================================================
+# 🎬 선생님의 오리지널 코드 내용 (프롬프트 포함)
+# =========================================================
+
+# 사이드바 (학생 정보 표시 및 로그아웃)
+with st.sidebar:
+    st.header(f"👋 {st.session_state['student_name']} 학생")
+    if st.button("로그아웃 (이름 다시 쓰기)"):
+        st.session_state["student_name"] = ""
+        st.rerun()
+    st.markdown("---")
+
 st.title("🎬 Pika 영상 제작 GPT 도우미")
 
 # 사이드바에서 작업 선택
@@ -19,48 +158,6 @@ chat_option = st.sidebar.radio("작업을 선택하세요:", [
     "3. 캐릭터/배경 이미지 생성",
     "4. 장면별 영상 Prompt 점검"
 ])
-
-# 공통 GPT 호출 함수
-def ask_gpt(messages, model="gpt-4o"):
-    response = client.chat.completions.create(
-        model=model,
-        messages=messages
-    )
-    return response.choices[0].message.content
-
-def generate_image(prompt):
-    try:
-        response = client.images.generate(
-            model="dall-e-3",
-            prompt=prompt,
-            size="1024x1024",
-            response_format="b64_json"
-        )
-        image_data = base64.b64decode(response.data[0].b64_json)
-        return Image.open(io.BytesIO(image_data))
-    except RateLimitError:
-        st.error("잠시만요! 너무 많은 이미지 요청이 있었어요. 😥 1분 후에 다시 시도해 주세요.")
-        
-        # 버튼을 잠시 비활성화하고 사용자에게 대기 시간을 안내합니다.
-        # 이 상태를 Streamlit session state에 저장하여 새로고침 시에도 유지되도록 합니다.
-        st.session_state.image_generation_disabled = True
-        st.session_state.image_generation_disable_until = time.time() + 60 # 60초(1분) 동안 비활성화
-        
-        # print(f"[RateLimitError] 발생 시간: {time.ctime()}") # 디버깅용 로그
-        return None
-    except APIError as e:
-        error_message = e.response.json().get('error', {}).get('message', '알 수 없는 오류')
-        st.error(f"이미지 생성 중 OpenAI API 오류가 발생했습니다: ({e.status_code}) {error_message}")
-        return None
-    except APIConnectionError as e:
-        st.error(f"인터넷 연결 문제로 이미지 생성에 실패했어요. 네트워크 상태를 확인해 주세요. 오류: {e}")
-        return None
-    except APITimeoutError:
-        st.error("이미지 생성 요청이 너무 오래 걸려 취소되었어요. 다시 시도해 주세요.")
-        return None
-    except Exception as e:
-        st.error(f"예상치 못한 오류가 발생했습니다: {e}. 잠시 후 다시 시도해 주세요.")
-        return None
 
 # 모든 GPT 시스템 프롬프트에 공통으로 들어갈 지침 (이 부분은 전역으로 유지)
 GLOBAL_GPT_DIRECTIVES = (
@@ -73,7 +170,7 @@ GLOBAL_GPT_DIRECTIVES = (
 """
 )
 
-# 1. 이야기 점검하기 (이 섹션은 Pika 버전 선택 기능이 없으므로 이전과 동일)
+# 1. 이야기 점검하기
 if chat_option.startswith("1"):
     st.header("1. 이야기 점검하기")
     st.markdown("💬 **목표:** 여러분의 이야기가 영상으로 만들기에 적절한지 GPT와 함께 대화하며 점검하고 다듬어 보세요.")
@@ -195,7 +292,7 @@ if chat_option.startswith("1"):
         st.session_state.story_input_submitted = False
         st.rerun()
 
-# 2. 이야기 나누기 (장면 분할) - 설계 반영
+# 2. 이야기 나누기 (장면 분할)
 elif chat_option.startswith("2"):
     st.header("2. 이야기 나누기")
     st.markdown("📝 **목표:** 여러분의 이야기를 영상 제작을 위한 여러 장면으로 나누어 보세요. 각 장면은 어떤 내용으로 구성될까요?")
@@ -255,8 +352,7 @@ elif chat_option.startswith("2"):
         st.session_state.segmentation_completed = False
         st.rerun()
 
-# --- 3. 캐릭터/배경 이미지 생성 프롬프트 구성 ---
-# chat_option 변수가 "3. 캐릭터/배경 이미지 생성"일 때만 이 블록이 실행됩니다.
+# 3. 캐릭터/배경 이미지 생성
 elif chat_option.startswith("3"):
     st.header("3. 캐릭터/배경 이미지 생성")
     st.markdown("🎨 **목표:** 여러분의 이야기에 등장하는 캐릭터나 배경 이미지를 직접 만들어 볼 수 있어요.")
@@ -315,7 +411,6 @@ elif chat_option.startswith("3"):
     )
 
     # 세션 상태 초기화 또는 로드
-    # 이 섹션에 들어올 때만 초기화되도록 조건 추가 (이미 다른 섹션에서 세션 상태가 존재할 경우 방지)
     if "messages_image_generation" not in st.session_state or \
        st.session_state.messages_image_generation[0]["content"] != IMAGE_GENERATION_SYSTEM_PROMPT:
         st.session_state.messages_image_generation = [
@@ -360,7 +455,7 @@ elif chat_option.startswith("3"):
                 st.session_state.messages_image_generation.append({"role": "assistant", "content": gpt_response})
             st.rerun()
 
-          # GPT의 마지막 메시지에서 '완성된 프롬프트:'를 찾아 추출 (파싱 로직 개선)
+        # GPT의 마지막 메시지에서 '완성된 프롬프트:'를 찾아 추출 (파싱 로직 개선)
         if st.session_state.messages_image_generation and \
            st.session_state.messages_image_generation[-1]["role"] == "assistant" and \
            "DALL-E 프롬프트 (영어):" in st.session_state.messages_image_generation[-1]["content"] and \
@@ -407,7 +502,6 @@ elif chat_option.startswith("3"):
                 st.session_state.korean_dalle_prompt_display = ""
 
     # 최종 프롬프트가 수집되었을 때 이미지 생성 버튼 및 이미지 표시
-    # --- 여기서부터 정렬 수정 ---
     if st.session_state.get("image_prompt_collected", False):
         # 버튼 활성화 여부 확인
         is_button_disabled = st.session_state.get("image_generation_disabled", False)
@@ -450,7 +544,6 @@ elif chat_option.startswith("3"):
             )
 
     # 대화 초기화 버튼
-    # --- 여기서부터 정렬 수정 ---
     if st.button("이미지 생성 초기화", key="reset_image_generation_chat"):
         st.session_state.messages_image_generation = [
             {"role": "system", "content": IMAGE_GENERATION_SYSTEM_PROMPT} 
@@ -463,7 +556,7 @@ elif chat_option.startswith("3"):
         st.session_state.image_generation_disable_until = 0 
         st.rerun()
 
-# 4. 장면별 영상 Prompt 점검 - 설계 반영 (여기에 모든 수정 사항 집중)
+# 4. 장면별 영상 Prompt 점검
 elif chat_option.startswith("4"):
     st.header("4. 장면별 영상 Prompt 점검")
     st.markdown("🎬 **목표:** 각 장면에 맞는 Pika 영상 프롬프트를 만들고, 더 좋은 프롬프트로 다듬어 보세요.")
@@ -581,8 +674,6 @@ elif chat_option.startswith("4"):
         current_system_prompt = PIKA_2_2_SYSTEM_PROMPT
 
     # st.session_state 초기화 시 시스템 프롬프트도 다시 로드하도록 조건 추가
-    # 선택된 Pika 버전에 따라 시스템 프롬프트가 변경될 경우 대화를 초기화
-    # (Pika 버전 선택 라디오 버튼이 변경되었는지 확인하는 로직 추가)
     if "messages_video_prompt" not in st.session_state or \
        st.session_state.get("last_pika_version_selected") != pika_version: # 추가된 조건
         st.session_state.messages_video_prompt = [
@@ -673,7 +764,7 @@ elif chat_option.startswith("4"):
                 st.markdown("---")
                 st.markdown("⬆️ 이 프롬프트가 마음에 든다면 **'장면 완성!'** 이라고 말해주세요. 혹시 수정하고 싶은 부분이 있다면 어떤 점이 마음에 들지 않는지 구체적으로 설명해주세요.")
                 
-            # 기존 종료 조건도 함께 유지 (이전 형식의 최종 프롬프트가 혹시 출력될 경우를 대비)
+            # 기존 종료 조건도 함께 유지
             elif "최종 프롬프트:" in last_gpt_message or \
                  "이 프롬프트로 멋진 영상을 만들 수 있을 거예요!" in last_gpt_message:
                 if "✨ **완성된 영상 프롬프트 (한국어):**" not in last_gpt_message:
@@ -690,5 +781,4 @@ elif chat_option.startswith("4"):
         ]
         st.session_state.current_scene_prompt = ""
         st.session_state.video_prompt_finalized = False 
-        # last_pika_version_selected는 라디오 버튼 변경 감지를 위해 유지
         st.rerun()
