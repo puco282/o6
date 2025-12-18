@@ -1,22 +1,21 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 import datetime
 import time
 import random
 import base64
 import io
+import requests  # 추가됨
+import json      # 추가됨
 from PIL import Image
 from openai import OpenAI, APIError, RateLimitError, APIConnectionError, APITimeoutError
 
 # --- [1] 기본 설정 ---
 st.set_page_config(page_title="Pika 영상 제작 GPT 도우미", layout="wide")
 
-# --- [2] 구글 시트 연결 (Secrets 필수) ---
-try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
-except Exception as e:
-    st.error(f"구글 시트 연결 오류: {e}. Secrets 설정을 확인해주세요.")
+# --- [2] 구글 시트 웹 앱 URL 설정 ---
+# 선생님이 알려주신 URL로 고정했습니다.
+GSHEET_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwu0ZU69GTrkYmXjo7V2t4Vskvo56_dOBLcDrw0heRSQZrw4_ZmKzsrHQdPjx3ZzJ7z3g/exec"
 
 # --- [3] 로그인 시스템 (Gatekeeper) ---
 if "student_name" not in st.session_state:
@@ -39,13 +38,12 @@ if not st.session_state["student_name"]:
     st.stop() # 로그인 안 하면 여기서 멈춤
 
 # =========================================================
-# ⚙️ 시스템 함수 정의 (랜덤 키 + 로깅 + 텔레메트리)
+# ⚙️ 시스템 함수 정의 (랜덤 키 + 로깅)
 # =========================================================
 
 def get_random_client():
     """Secrets의 openai_keys에서 랜덤으로 키를 하나 뽑아 클라이언트 생성"""
     try:
-        # secrets.toml에 [openai_keys] 섹션이 있어야 함
         api_keys = list(st.secrets["openai_keys"].values())
         selected_key = random.choice(api_keys)
         return OpenAI(api_key=selected_key)
@@ -54,29 +52,29 @@ def get_random_client():
         st.stop()
 
 def save_log_to_sheet(action_type, question, answer, latency, status, tokens=0):
-    """구글 시트에 활동 로그 저장 (백엔드)"""
+    """구글 앱스 스크립트로 데이터를 전송하여 시트에 실시간 기록"""
     try:
-        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        new_row = pd.DataFrame([{
-            "timestamp": current_time,
-            "student_name": st.session_state["student_name"],
+        payload = {
+            "student_name": st.session_state.get("student_name", "Unknown"),
             "user_question": f"[{action_type}] {question}",
-            "ai_answer": str(answer)[:1000], # 너무 길면 자름
+            "ai_answer": str(answer)[:1000], 
             "latency": latency,
             "status": status,
             "tokens": tokens
-        }])
-        
-        # Sheet1에 이어쓰기
-        existing_data = conn.read(worksheet="Sheet1", usecols=list(range(7)), ttl=5)
-        updated_data = pd.concat([existing_data, new_row], ignore_index=True)
-        conn.update(worksheet="Sheet1", data=updated_data)
+        }
+        # 앱스 스크립트 웹 앱으로 데이터 쏘기
+        requests.post(
+            GSHEET_WEBAPP_URL, 
+            data=json.dumps(payload),
+            headers={"Content-Type": "application/json"},
+            timeout=10
+        )
     except Exception as e:
-        print(f"로그 저장 실패 (학생에게는 안 보임): {e}")
+        print(f"로그 저장 실패 (콘솔 로그): {e}")
 
-# --- [핵심] 선생님의 ask_gpt 함수 업그레이드 (로깅 추가) ---
+# --- [핵심] ask_gpt 함수 (웹 앱 로깅 적용) ---
 def ask_gpt(messages, model="gpt-4o"):
-    client = get_random_client() # 랜덤 키 사용
+    client = get_random_client()
     start_time = time.time()
     
     try:
@@ -86,12 +84,11 @@ def ask_gpt(messages, model="gpt-4o"):
         )
         content = response.choices[0].message.content
         
-        # 데이터 수집
+        # 데이터 수집 및 전송
         end_time = time.time()
         latency = round(end_time - start_time, 2)
         tokens = response.usage.total_tokens
         
-        # 로그 저장 (마지막 사용자 질문 추출)
         last_user_msg = next((m['content'] for m in reversed(messages) if m['role'] == 'user'), "System Prompt")
         save_log_to_sheet("대화", last_user_msg, content, latency, "SUCCESS", tokens)
         
@@ -102,9 +99,9 @@ def ask_gpt(messages, model="gpt-4o"):
         st.error(f"오류가 발생했습니다: {e}")
         return "미안해, 잠시 문제가 생겼어. 다시 시도해줄래?"
 
-# --- [핵심] 선생님의 generate_image 함수 업그레이드 (로깅 추가) ---
+# --- [핵심] generate_image 함수 (웹 앱 로깅 적용) ---
 def generate_image(prompt):
-    client = get_random_client() # 랜덤 키 사용
+    client = get_random_client()
     start_time = time.time()
     
     try:
